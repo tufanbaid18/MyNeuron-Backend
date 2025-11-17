@@ -7,6 +7,7 @@ from .models import (
     ProfessionalDetail,
     Post,
     PostMedia,
+    Education,
 )
 from .validators import validate_email, validate_password_complexity
 from .models import Like, Bookmark, Comment
@@ -81,6 +82,8 @@ class MemberSerializer(serializers.ModelSerializer):
 # -------------------------------
 # 🔹 USER PROFILE (with personal + professional details)
 # -------------------------------
+
+
 class PersonalDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = PersonalDetail
@@ -88,16 +91,29 @@ class PersonalDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['user']
 
 
+
 class ProfessionalDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProfessionalDetail
         fields = '__all__'
         read_only_fields = ['user']
+        
+
+class EducationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Education
+        exclude = ('user',)   # HIDE THE USER FIELD
+        extra_kwargs = {
+            'degree': {"required": False, "allow_blank": True},
+            'course_name': {"required": False, "allow_blank": True},
+        }
 
 
+ 
 class UserProfileSerializer(serializers.ModelSerializer):
     personal_detail = PersonalDetailSerializer(required=False)
     professional_detail = ProfessionalDetailSerializer(required=False)
+    education = EducationSerializer(many=True, required=False)
 
     class Meta:
         model = User
@@ -109,22 +125,49 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'profile_image',
             'personal_detail',
             'professional_detail',
+            'education',
         ]
 
     def update(self, instance, validated_data):
         personal_data = validated_data.pop('personal_detail', {})
         professional_data = validated_data.pop('professional_detail', {})
+        education_data = validated_data.pop('education', [])
 
-        # Update user core fields
+        # ---------------- USER CORE FIELDS ----------------
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
 
-        # Update or create nested data
+        # ---------------- PERSONAL DETAIL ----------------
         if personal_data:
-            PersonalDetail.objects.update_or_create(user=instance, defaults=personal_data)
+            PersonalDetail.objects.update_or_create(
+                user=instance,
+                defaults=personal_data
+            )
+
+        # ---------------- PROFESSIONAL DETAIL ----------------
         if professional_data:
-            ProfessionalDetail.objects.update_or_create(user=instance, defaults=professional_data)
+            ProfessionalDetail.objects.update_or_create(
+                user=instance,
+                defaults=professional_data
+            )
+
+        # ---------------- EDUCATION (ADD / UPDATE) ----------------
+        existing_ids = []
+        for edu in education_data:
+            edu_id = edu.get("id")
+
+            if edu_id:
+                # UPDATE
+                Education.objects.filter(id=edu_id, user=instance).update(**edu)
+                existing_ids.append(edu_id)
+            else:
+                # CREATE
+                new_obj = Education.objects.create(user=instance, **edu)
+                existing_ids.append(new_obj.id)
+
+        # ---------------- DELETE OLD EDUCATION ----------------
+        Education.objects.filter(user=instance).exclude(id__in=existing_ids).delete()
 
         return instance
 
@@ -154,7 +197,7 @@ class PostMediaSerializer(serializers.ModelSerializer):
 
 
 class CommentSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+    user = UserMiniSerializer(read_only=True)
 
     class Meta:
         model = Comment

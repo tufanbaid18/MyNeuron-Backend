@@ -47,12 +47,9 @@ class PersonalDetail(models.Model):
     google_scholar_link = models.URLField(blank=True, null=True)
     x_handle = models.CharField(max_length=255, blank=True, null=True)
     city = models.CharField(max_length=255, blank=True, null=True)
-
-    # Education
-    phd_details = models.TextField(blank=True, null=True)
-    masters_details = models.TextField(blank=True, null=True)
-    graduation_details = models.TextField(blank=True, null=True)
-    school_details = models.TextField(blank=True, null=True)
+    gender = models.CharField(max_length=20, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+    dob = models.DateField(blank=True, null=True)    
 
     # Publications
     articles_journals = models.TextField(blank=True, null=True)
@@ -60,6 +57,15 @@ class PersonalDetail(models.Model):
 
     def __str__(self):
         return f"Personal Details - {self.user.email}"
+    
+class Education(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='education')
+    degree = models.CharField(blank=True, null=True, max_length=200)
+    course_name = models.CharField(blank=True, null=True, max_length=200)
+    end_date = models.DateField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.degree} - {self.course_name}"
 
 
 class ProfessionalDetail(models.Model):

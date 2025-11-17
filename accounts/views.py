@@ -26,9 +26,10 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from .models import Post, PostMedia
 from .serializers import PostSerializer
 from django.db import transaction
-from .models import Like, Bookmark, Comment
-from .serializers import CommentSerializer
-
+from .models import Like, Bookmark, Comment, Education
+from .serializers import CommentSerializer, EducationSerializer
+from rest_framework.decorators import action
+from rest_framework.parsers import JSONParser
 
 
 
@@ -260,9 +261,72 @@ def update_professional_detail(request):
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_education_details(request):
+    """Fetch logged-in user's education details"""
+    education = Education.objects.filter(user=request.user)
+    serializer = EducationSerializer(education, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
 
-from rest_framework.decorators import action
-from rest_framework.parsers import JSONParser
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_education_detail(request):
+    """Add new education detail for logged-in user"""
+    serializer = EducationSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_education_detail(request, pk):
+    """Update specific education detail"""
+    try:
+        education = Education.objects.get(id=pk, user=request.user)
+    except Education.DoesNotExist:
+        return Response({'detail': 'Education record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = EducationSerializer(education, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_education_detail(request, pk):
+    """Delete specific education detail"""
+    try:
+        education = Education.objects.get(id=pk, user=request.user)
+    except Education.DoesNotExist:
+        return Response({'detail': 'Education record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    education.delete()
+    return Response({'detail': 'Education deleted successfully.'}, status=status.HTTP_200_OK)
+
+
+
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_comment(request, post_id):
+    try:
+        post = Post.objects.get(pk=post_id)
+    except Post.DoesNotExist:
+        return Response({"error": "Post not found"}, status=404)
+
+    c_content = request.data.get("c_content", "").strip()
+    if not c_content:
+        return Response({"error": "Comment cannot be empty"}, status=400)
+    return Response({"HI"}, status=200)
+    comment = Comment.objects.create(user=request.user, post=post, c_content=c_content)
+    serializer = CommentSerializer(comment)
+    return Response(serializer.data, status=201)
 
 # --------------------------------------------------------
 # 🔹 POST VIEWSET (supports text + media upload)
@@ -271,7 +335,7 @@ class PostViewSet(viewsets.ModelViewSet):
     queryset = Post.objects.all().order_by('-created_at')
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def create(self, request, *args, **kwargs):
         """
@@ -362,19 +426,3 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         serializer.save()
 
 
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def add_comment(request, post_id):
-    try:
-        post = Post.objects.get(pk=post_id)
-    except Post.DoesNotExist:
-        return Response({"error": "Post not found"}, status=404)
-
-    c_content = request.data.get("c_content", "").strip()
-    if not c_content:
-        return Response({"error": "Comment cannot be empty"}, status=400)
-
-    comment = Comment.objects.create(user=request.user, post=post, c_content=c_content)
-    serializer = CommentSerializer(comment)
-    return Response(serializer.data, status=201)

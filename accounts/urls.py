@@ -5,7 +5,9 @@ from .views import (
     api_register, api_login, api_event_register,
     upload_profile_image, get_personal_detail,
     update_personal_detail, get_professional_detail,
-    update_professional_detail, add_comment,
+    update_professional_detail, add_comment, get_education_details, add_education_detail,
+    update_education_detail,
+    delete_education_detail,
 )
 from .views import PostViewSet
 from .views import  UserProfileViewSet
@@ -32,6 +34,11 @@ urlpatterns = [
     path('api/profile/professional/', get_professional_detail),
     path('api/profile/professional/update/', update_professional_detail),
     path('api/posts/<int:post_id>/comment/', add_comment, name='add_comment'),
+    # ⭐ Education (corrected)
+    path('api/profile/education/', get_education_details),
+    path('api/profile/education/add/', add_education_detail),
+    path('api/profile/education/<int:pk>/update/', update_education_detail),
+    path('api/profile/education/<int:pk>/delete/', delete_education_detail),
 ]
 
 
