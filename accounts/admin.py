@@ -4,18 +4,24 @@ from .models import User, Event, Member
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
-    list_display = ('email', 'first_name', 'last_name', 'is_staff')
+
+    list_display = ('email', 'first_name', 'last_name', 'role', 'is_staff')
     ordering = ('email',)
     search_fields = ('email',)
+
     fieldsets = (
         (None, {'fields': ('email', 'password')}),
         ('Personal info', {'fields': ('first_name', 'last_name', 'profile_image')}),
-        ('Permissions', {'fields': ('is_active','is_staff','is_superuser','groups','user_permissions')}),
+        ('Role info', {'fields': ('role',)}),
+        ('Permissions', {
+            'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')
+        }),
     )
+
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email','password1','password2'),
+            'fields': ('email', 'password1', 'password2', 'role'),
         }),
     )
 

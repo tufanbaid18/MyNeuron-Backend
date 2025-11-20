@@ -8,6 +8,7 @@ from .views import (
     update_professional_detail, add_comment, get_education_details, add_education_detail,
     update_education_detail,
     delete_education_detail,
+    get_speakers
 )
 from .views import PostViewSet
 from .views import  UserProfileViewSet
@@ -39,6 +40,8 @@ urlpatterns = [
     path('api/profile/education/add/', add_education_detail),
     path('api/profile/education/<int:pk>/update/', update_education_detail),
     path('api/profile/education/<int:pk>/delete/', delete_education_detail),
+    path("api/speakers/", get_speakers),
+
 ]
 
 

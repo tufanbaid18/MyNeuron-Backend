@@ -120,11 +120,18 @@ def api_login(request):
     if not user.check_password(password):
         return Response({'detail': 'Invalid credentials'}, status=400)
 
-    # login successful
     token, _ = Token.objects.get_or_create(user=user)
+
     return Response({
         'token': token.key,
-        'user': UserSerializer(user).data
+        'user': {
+            'id': user.id,
+            'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
+            'profile_image': user.profile_image.url if user.profile_image else None,
+            'role': user.role,     # <-- Important line
+        }
     })
 
 
@@ -424,5 +431,12 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         serializer.save()
+
+
+@api_view(['GET'])
+def get_speakers(request):
+    speakers = User.objects.filter(role='speaker')
+    serializer = UserSerializer(speakers, many=True, context={'request': request})
+    return Response(serializer.data)
 
 
