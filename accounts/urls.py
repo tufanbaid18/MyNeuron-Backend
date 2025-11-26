@@ -12,6 +12,9 @@ from .views import (
 )
 from .views import PostViewSet
 from .views import  UserProfileViewSet
+from .views import HandshakeViewSet, NotificationViewSet
+from .views import ProgramViewSet
+
 
 
 router = DefaultRouter()
@@ -20,7 +23,9 @@ router.register('events', EventViewSet)
 router.register('members', MemberViewSet)
 router.register('user-profile', UserProfileViewSet, basename='user-profile')
 router.register('posts', PostViewSet, basename='post')
-
+router.register("handshake", HandshakeViewSet, basename="handshake")
+router.register("notifications", NotificationViewSet, basename='notifications')
+router.register('programs', ProgramViewSet, basename='programs')
 
 app_name = 'accounts'
 
@@ -35,7 +40,6 @@ urlpatterns = [
     path('api/profile/professional/', get_professional_detail),
     path('api/profile/professional/update/', update_professional_detail),
     path('api/posts/<int:post_id>/comment/', add_comment, name='add_comment'),
-    # ⭐ Education (corrected)
     path('api/profile/education/', get_education_details),
     path('api/profile/education/add/', add_education_detail),
     path('api/profile/education/<int:pk>/update/', update_education_detail),

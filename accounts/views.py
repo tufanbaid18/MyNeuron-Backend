@@ -30,7 +30,15 @@ from .models import Like, Bookmark, Comment, Education
 from .serializers import CommentSerializer, EducationSerializer
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser
-
+from .models import HandshakeRequest
+from .serializers import HandshakeSerializer
+from django.utils.timezone import now
+from .models import Notification
+from .serializers import NotificationSerializer
+from rest_framework import filters
+from .models import Program
+from .serializers import ProgramSerializer
+from rest_framework.exceptions import ValidationError
 
 
 # Web registration
@@ -390,6 +398,14 @@ class PostViewSet(viewsets.ModelViewSet):
         if not created:
             like.delete()
             return Response({"message": "Unliked"}, status=status.HTTP_200_OK)
+
+        if post.user != request.user:  # avoid notifying yourself
+            Notification.objects.create(
+                user=post.user,                 # who receives the notification
+                actor=request.user,             # who performed action
+                action="liked your post",
+                post=post,
+            )
         return Response({"message": "Liked"}, status=status.HTTP_201_CREATED)
 
     # Bookmark a post
@@ -412,9 +428,24 @@ class PostViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Comment cannot be empty'}, status=400)
 
         comment = Comment.objects.create(user=request.user, post=post, c_content=c_content)
+        if post.user != request.user:  # Don’t notify if user comments on own post
+            Notification.objects.create(
+                user=post.user,                 # who receives the notification
+                actor=request.user,             # who performed action
+                action="commented on your post",
+                post=post,
+            )
         serializer = CommentSerializer(comment)
         return Response(serializer.data, status=201)
 
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def my_latest(self, request):
+        """
+        Return posts by logged-in user.
+        """
+        posts = Post.objects.filter(user=request.user).order_by('-created_at')
+        serializer = self.get_serializer(posts, many=True, context={'request': request})
+        return Response(serializer.data)
 
 
 
@@ -440,3 +471,151 @@ def get_speakers(request):
     return Response(serializer.data)
 
 
+
+class HandshakeViewSet(viewsets.ModelViewSet):
+    queryset = HandshakeRequest.objects.all()
+    serializer_class = HandshakeSerializer
+    permission_classes = [IsAuthenticated]
+
+    # Normal user sends handshake to speaker
+    @action(detail=False, methods=["post"])
+    def send(self, request):
+        receiver_id = request.data.get("receiver_id")
+        sender = request.user
+
+        if not receiver_id:
+            return Response({"error": "receiver_id is required"}, status=400)
+
+        if int(receiver_id) == sender.id:
+            return Response({"error": "You cannot send handshake to yourself"}, status=400)
+
+        # Prevent duplicate request
+        existing = HandshakeRequest.objects.filter(sender=sender, receiver_id=receiver_id).first()
+        if existing:
+            return Response({
+                "message": "Handshake already sent",
+                "status": existing.status
+            })
+
+        handshake = HandshakeRequest.objects.create(
+            sender=sender,
+            receiver_id=receiver_id,
+            status="pending"
+        )
+
+        return Response(HandshakeSerializer(handshake).data, status=201)
+
+    # Speaker accepts handshake
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        handshake = self.get_object()
+
+        if handshake.receiver != request.user:
+            return Response({"error": "Not allowed"}, status=403)
+
+        handshake.status = "accepted"
+        handshake.responded_at = now()
+        handshake.save()
+        # ⭐ Notify sender
+        Notification.objects.create(
+            user=handshake.sender,
+            actor=handshake.receiver,
+            action="accepted your handshake request",
+            handshake=handshake,
+        )
+        return Response({"message": "Handshake accepted"})
+
+    # Speaker declines handshake
+    @action(detail=True, methods=["post"])
+    def decline(self, request, pk=None):
+        handshake = self.get_object()
+
+        if handshake.receiver != request.user:
+            return Response({"error": "Not allowed"}, status=403)
+
+        handshake.status = "declined"
+        handshake.responded_at = now()
+        handshake.save()
+        # ⭐ Notify sender
+        Notification.objects.create(
+            user=handshake.sender,
+            actor=handshake.receiver,
+            action="declined your handshake request",
+            handshake=handshake,
+        )
+        return Response({"message": "Handshake declined"})
+
+    # Logged-in user requests (both sent & received)
+    @action(detail=False, methods=["get"])
+    def my_handshakes(self, request):
+        user = request.user
+        sent = HandshakeRequest.objects.filter(sender=user).order_by("-created_at")
+        received = HandshakeRequest.objects.filter(receiver=user).order_by("-created_at")
+
+        return Response({
+            "sent": HandshakeSerializer(sent, many=True).data,
+            "received": HandshakeSerializer(received, many=True).data,
+        })
+
+
+
+
+
+
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all().order_by("-created_at")
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Logged-in user should only see *their* notifications.
+        """
+        return Notification.objects.filter(user=self.request.user).order_by("-created_at")
+
+    @action(detail=False, methods=["get"])
+    def unread_count(self, request):
+        """
+        Return the count of unread notifications
+        """
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({"unread": count})
+
+    @action(detail=True, methods=["post"])
+    def mark_read(self, request, pk=None):
+        """
+        Mark a single notification as read
+        """
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({"message": "Notification marked as read"})
+
+    @action(detail=False, methods=["post"])
+    def mark_all_read(self, request):
+        """
+        Mark all notifications of the user as read
+        """
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({"message": "All notifications marked as read"})
+
+
+
+
+
+class ProgramViewSet(viewsets.ModelViewSet):
+    queryset = Program.objects.all().order_by("-id")
+    serializer_class = ProgramSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["topic", "venue", "speaker__first_name", "event__name"]
+    ordering_fields = ["date", "start_time"]
+
+    # Prevent assigning a non-speaker user
+    def perform_create(self, serializer):
+        speaker = serializer.validated_data["speaker"]
+        if speaker.role != "speaker":
+            raise ValidationError("Selected user is not a speaker.")
+        serializer.save()

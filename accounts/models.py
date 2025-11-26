@@ -1,6 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from .managers import CustomUserManager
+from django.conf import settings
+
+
 
 class User(AbstractUser):
     username = None
@@ -25,11 +28,19 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+
+
+
+
 class Event(models.Model):
     name = models.CharField(max_length=255)
 
     def __str__(self):
         return f"{self.id} - {self.name}"
+
+
+
+
 
 class Member(models.Model):
     ROLE_CHOICES = (
@@ -47,8 +58,30 @@ class Member(models.Model):
     def __str__(self):
         return f"Member {self.id}: {self.user.email} -> {self.event.name} ({self.role})"
 
-from django.db import models
-from django.conf import settings
+
+
+
+
+class Program(models.Model):
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="programs")
+    speaker = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        limit_choices_to={'role': 'speaker'},  # Only speakers visible in admin
+        related_name="programs"
+    )
+    venue = models.CharField(max_length=255)
+    topic = models.CharField(max_length=255)
+    date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+
+    def __str__(self):
+        return f"Program {self.id} - {self.topic} ({self.event.name})"
+
+
+
+
 
 class PersonalDetail(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='personal_detail')
@@ -79,6 +112,9 @@ class Education(models.Model):
         return f"{self.degree} - {self.course_name}"
 
 
+
+
+
 class ProfessionalDetail(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='professional_detail')
     current_experience = models.TextField(blank=True, null=True)
@@ -89,6 +125,9 @@ class ProfessionalDetail(models.Model):
 
     def __str__(self):
         return f"Professional Details - {self.user.email}"
+
+
+
 
 
 class Post(models.Model):
@@ -118,6 +157,7 @@ class Post(models.Model):
 
 
 
+
 class PostMedia(models.Model):
     post = models.ForeignKey(
         Post,
@@ -140,6 +180,8 @@ class PostMedia(models.Model):
     
 
 
+
+
 class Like(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="likes")
@@ -147,6 +189,9 @@ class Like(models.Model):
 
     class Meta:
         unique_together = ("user", "post")  # prevents multiple likes
+
+
+
 
 
 class Bookmark(models.Model):
@@ -158,6 +203,9 @@ class Bookmark(models.Model):
         unique_together = ("user", "post")
 
 
+
+
+
 class Comment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
@@ -167,4 +215,54 @@ class Comment(models.Model):
     
     def __str__(self):
         return f"Comment by {self.user.email} on {self.post.title}"
+
+
+
+
+
+class HandshakeRequest(models.Model):
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="sent_handshakes",
+        on_delete=models.CASCADE
+    )
+    receiver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="received_handshakes",
+        on_delete=models.CASCADE
+    )
+    
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("pending", "Pending"),
+            ("accepted", "Accepted"),
+            ("declined", "Declined"),
+        ],
+        default="pending"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.sender} → {self.receiver} ({self.status})"
+
+
+
+
+
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="notifications", on_delete=models.CASCADE)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    action = models.CharField(max_length=255)
+
+    post = models.ForeignKey(Post, null=True, blank=True, on_delete=models.CASCADE)
+    handshake = models.ForeignKey(HandshakeRequest, null=True, blank=True, on_delete=models.CASCADE)
+
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.actor} {self.action}"
 

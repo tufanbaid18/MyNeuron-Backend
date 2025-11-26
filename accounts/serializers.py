@@ -10,7 +10,8 @@ from .models import (
     Education,
 )
 from .validators import validate_email, validate_password_complexity
-from .models import Like, Bookmark, Comment
+from .models import Comment, Program
+from .models import Notification
 
 # -------------------------------
 # 🔹 USER SERIALIZER (for signup)
@@ -234,3 +235,88 @@ class PostSerializer(serializers.ModelSerializer):
     def get_bookmarks_count(self, obj):
         return obj.bookmarks.count()
 
+
+
+from .models import HandshakeRequest
+
+class HandshakeSerializer(serializers.ModelSerializer):
+    sender_details = serializers.SerializerMethodField()
+    receiver_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = HandshakeRequest
+        fields = [
+        'id', 'sender', 'receiver',
+        'status', 'created_at', 'responded_at',
+        'sender_details', 'receiver_details'
+    ] 
+
+    def get_sender_details(self, obj):
+        return {
+            "id": obj.sender.id,
+            "name": f"{obj.sender.first_name} {obj.sender.last_name}",
+            "email": obj.sender.email
+        }
+
+    def get_receiver_details(self, obj):
+        return {
+            "id": obj.receiver.id,
+            "name": f"{obj.receiver.first_name} {obj.receiver.last_name}",
+            "email": obj.receiver.email
+        }
+
+
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    actor_details = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "user",
+            "actor",
+            "actor_details",
+            "action",
+            "post",
+            "handshake",
+            "is_read",
+            "created_at",
+        ]
+
+    def get_actor_details(self, obj):
+        if not obj.actor:
+            return None
+        
+        return {
+            "id": obj.actor.id,
+            "name": obj.actor.first_name,
+            "email": obj.actor.email,
+        }
+
+
+
+
+
+class ProgramSerializer(serializers.ModelSerializer):
+    event_name = serializers.CharField(source="event.name", read_only=True)
+    speaker_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Program
+        fields = [
+            "id",
+            "event",
+            "event_name",
+            "speaker",
+            "speaker_name",
+            "venue",
+            "topic",
+            "date",
+            "start_time",
+            "end_time",
+        ]
+
+    def get_speaker_name(self, obj):
+        return f"{obj.speaker.first_name} {obj.speaker.last_name}".strip()
