@@ -8,12 +8,13 @@ from .views import (
     update_professional_detail, add_comment, get_education_details, add_education_detail,
     update_education_detail,
     delete_education_detail,
-    get_speakers
+    get_speakers, ConversationViewSet
 )
 from .views import PostViewSet
 from .views import  UserProfileViewSet
 from .views import HandshakeViewSet, NotificationViewSet
-from .views import ProgramViewSet
+from .views import ProgramViewSet, MessageViewSet
+
 
 
 
@@ -26,6 +27,7 @@ router.register('posts', PostViewSet, basename='post')
 router.register("handshake", HandshakeViewSet, basename="handshake")
 router.register("notifications", NotificationViewSet, basename='notifications')
 router.register('programs', ProgramViewSet, basename='programs')
+router.register('messages', MessageViewSet, basename='messages')
 
 app_name = 'accounts'
 
@@ -45,7 +47,7 @@ urlpatterns = [
     path('api/profile/education/<int:pk>/update/', update_education_detail),
     path('api/profile/education/<int:pk>/delete/', delete_education_detail),
     path("api/speakers/", get_speakers),
-
+    path("api/conversations/", ConversationViewSet.as_view({"get": "list"})),
 ]
 
 

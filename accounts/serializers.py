@@ -12,6 +12,9 @@ from .models import (
 from .validators import validate_email, validate_password_complexity
 from .models import Comment, Program
 from .models import Notification
+from .models import Message
+
+
 
 # -------------------------------
 # 🔹 USER SERIALIZER (for signup)
@@ -19,6 +22,7 @@ from .models import Notification
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     confirm_password = serializers.CharField(write_only=True, required=True)
+    profile_image = serializers.ImageField(required=False)
 
     class Meta:
         model = User
@@ -320,3 +324,44 @@ class ProgramSerializer(serializers.ModelSerializer):
 
     def get_speaker_name(self, obj):
         return f"{obj.speaker.first_name} {obj.speaker.last_name}".strip()
+    
+
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.CharField(source='sender.first_name', read_only=True)
+    receiver_name = serializers.CharField(source='receiver.first_name', read_only=True)
+    sender_image = serializers.SerializerMethodField()
+    receiver_image = serializers.SerializerMethodField()
+    sender = serializers.PrimaryKeyRelatedField(read_only=True)  # <-- make sender read-only
+
+    class Meta:
+        model = Message
+        fields = [
+            'id',
+            'sender',
+            'receiver',
+            'content',
+            'timestamp',
+            'is_read',
+            'sender_name',
+            'receiver_name',
+            'sender_image',
+            'receiver_image',
+        ]
+
+
+    def get_sender_image(self, obj):
+        request = self.context.get("request")
+        if obj.sender.profile_image:
+            return request.build_absolute_uri(obj.sender.profile_image.url)
+        return None
+
+    def get_receiver_image(self, obj):
+        request = self.context.get("request")
+        if obj.receiver.profile_image:
+            return request.build_absolute_uri(obj.receiver.profile_image.url)
+        return None
+
+
+

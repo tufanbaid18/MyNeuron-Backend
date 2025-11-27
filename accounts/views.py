@@ -39,6 +39,9 @@ from rest_framework import filters
 from .models import Program
 from .serializers import ProgramSerializer
 from rest_framework.exceptions import ValidationError
+from django.db.models import Q
+from .models import Message
+from .serializers import MessageSerializer
 
 
 # Web registration
@@ -95,6 +98,10 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [AllowAny]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+
 
 class MemberViewSet(viewsets.ModelViewSet):
     queryset = Member.objects.select_related('user','event').all()
@@ -619,3 +626,95 @@ class ProgramViewSet(viewsets.ModelViewSet):
         if speaker.role != "speaker":
             raise ValidationError("Selected user is not a speaker.")
         serializer.save()
+
+
+
+
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.db.models import Q, Max
+
+class MessageViewSet(viewsets.ModelViewSet):
+    queryset = Message.objects.all()
+    serializer_class = MessageSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+    def create(self, request, *args, **kwargs):
+        serializer = MessageSerializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(sender=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"])
+    def conversations(self, request):
+        user = request.user
+
+        # Find unique users the current user has messaged with
+        messages = Message.objects.filter(Q(sender=user) | Q(receiver=user))
+        
+        # Get latest message per user
+        conversations_dict = {}
+        for msg in messages.order_by("timestamp"):
+            other_user = msg.receiver if msg.sender == user else msg.sender
+            conversations_dict[other_user.id] = {
+                "user_id": other_user.id,
+                "first_name": other_user.first_name,
+                "last_name": other_user.last_name,
+                "email": other_user.email,
+                "profile_image": request.build_absolute_uri(other_user.profile_image.url) if other_user.profile_image else None,
+                "last_message": msg.content,
+                "timestamp": msg.timestamp
+            }
+
+        # Return as a list
+        return Response(list(conversations_dict.values()))
+
+    @action(detail=False, methods=['get'], url_path='chat/(?P<user_id>[^/.]+)')
+    def chat_history(self, request, user_id=None):
+        user = request.user
+        messages = Message.objects.filter(
+            Q(sender=user, receiver_id=user_id) |
+            Q(sender_id=user_id, receiver=user)
+        ).order_by("timestamp")
+        serializer = self.get_serializer(messages, many=True)
+        return Response(serializer.data)
+    
+
+
+
+class ConversationViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        user = request.user
+
+        # find all messages where user participated
+        messages = Message.objects.filter(
+            Q(sender=user) | Q(receiver=user)
+        ).order_by("-timestamp")
+
+        conversations = {}  # key = other_user_id
+
+        for msg in messages:
+            # determine with which user this message was exchanged
+            other = msg.receiver if msg.sender == user else msg.sender
+
+            # if no entry yet, add the latest message (because sorted desc)
+            if other.id not in conversations:
+                conversations[other.id] = {
+                    "user": UserSerializer(other, context={"request": request}).data,
+                    "last_message": MessageSerializer(msg, context={"request": request}).data
+                }
+
+        # return a list sorted by latest message timestamp
+        return Response(sorted(
+            conversations.values(),
+            key=lambda x: x["last_message"]["timestamp"],
+            reverse=True
+        ))
+
+
+
