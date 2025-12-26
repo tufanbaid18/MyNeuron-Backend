@@ -42,6 +42,14 @@ from rest_framework.exceptions import ValidationError
 from django.db.models import Q
 from .models import Message
 from .serializers import MessageSerializer
+from .models import Folder, FolderItem
+from .serializers import FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer
+from django.core.mail import send_mail
+from .serializers import UserMiniSerializer
+from .serializers import CalendarEventSerializer
+from .models import CalendarEvent
+from .models import PersonalDetail, ProfessionalDetail, Education, PastExperience
+from .serializers import PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer
 
 
 # Web registration
@@ -92,15 +100,9 @@ def logout_view(request):
 class EventViewSet(viewsets.ModelViewSet):
     queryset = Event.objects.all()
     serializer_class = EventSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [AllowAny]
 
-    def get_serializer_context(self):
-        return {"request": self.request}
 
 
 class MemberViewSet(viewsets.ModelViewSet):
@@ -217,6 +219,9 @@ def upload_profile_image(request):
 
 
 
+
+
+
 # ================================
 # 👤 PERSONAL DETAIL VIEWS
 # ================================
@@ -225,11 +230,7 @@ def upload_profile_image(request):
 @permission_classes([IsAuthenticated])
 def get_personal_detail(request):
     """Fetch logged-in user's personal details"""
-    try:
-        personal_detail = PersonalDetail.objects.get(user=request.user)
-    except PersonalDetail.DoesNotExist:
-        return Response({'detail': 'Personal details not found.'}, status=status.HTTP_404_NOT_FOUND)
-
+    personal_detail, _ = PersonalDetail.objects.get_or_create(user=request.user)
     serializer = PersonalDetailSerializer(personal_detail)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -238,11 +239,7 @@ def get_personal_detail(request):
 @permission_classes([IsAuthenticated])
 def update_personal_detail(request):
     """Update logged-in user's personal details"""
-    try:
-        personal_detail, created = PersonalDetail.objects.get_or_create(user=request.user)
-    except PersonalDetail.MultipleObjectsReturned:
-        return Response({'detail': 'Duplicate profile found.'}, status=status.HTTP_400_BAD_REQUEST)
-
+    personal_detail, _ = PersonalDetail.objects.get_or_create(user=request.user)
     serializer = PersonalDetailSerializer(personal_detail, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
@@ -257,12 +254,8 @@ def update_personal_detail(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_professional_detail(request):
-    """Fetch logged-in user's professional details"""
-    try:
-        professional_detail = ProfessionalDetail.objects.get(user=request.user)
-    except ProfessionalDetail.DoesNotExist:
-        return Response({'detail': 'Professional details not found.'}, status=status.HTTP_404_NOT_FOUND)
-
+    """Fetch logged-in user's professional details (with past experiences)"""
+    professional_detail, _ = ProfessionalDetail.objects.get_or_create(user=request.user)
     serializer = ProfessionalDetailSerializer(professional_detail)
     return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -270,18 +263,18 @@ def get_professional_detail(request):
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def update_professional_detail(request):
-    """Update logged-in user's professional details"""
-    try:
-        professional_detail, created = ProfessionalDetail.objects.get_or_create(user=request.user)
-    except ProfessionalDetail.MultipleObjectsReturned:
-        return Response({'detail': 'Duplicate profile found.'}, status=status.HTTP_400_BAD_REQUEST)
-
+    """Update logged-in user's professional details (including past experiences)"""
+    professional_detail, _ = ProfessionalDetail.objects.get_or_create(user=request.user)
     serializer = ProfessionalDetailSerializer(professional_detail, data=request.data, partial=True)
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+# ================================
+# 🎓 EDUCATION VIEWS
+# ================================
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -290,6 +283,7 @@ def get_education_details(request):
     education = Education.objects.filter(user=request.user)
     serializer = EducationSerializer(education, many=True)
     return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -300,6 +294,7 @@ def add_education_detail(request):
         serializer.save(user=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
@@ -331,6 +326,58 @@ def delete_education_detail(request, pk):
     return Response({'detail': 'Education deleted successfully.'}, status=status.HTTP_200_OK)
 
 
+# ================================
+# 📝 PAST EXPERIENCE VIEWS
+# ================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_past_experiences(request):
+    """Fetch logged-in user's past professional experiences"""
+    experiences = PastExperience.objects.filter(user=request.user)
+    serializer = PastExperienceSerializer(experiences, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_past_experience(request):
+    """Add a new past experience"""
+    serializer = PastExperienceSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_past_experience(request, pk):
+    """Update a specific past experience"""
+    try:
+        experience = PastExperience.objects.get(id=pk, user=request.user)
+    except PastExperience.DoesNotExist:
+        return Response({'detail': 'Experience not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    serializer = PastExperienceSerializer(experience, data=request.data, partial=True)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_past_experience(request, pk):
+    """Delete a specific past experience"""
+    try:
+        experience = PastExperience.objects.get(id=pk, user=request.user)
+    except PastExperience.DoesNotExist:
+        return Response({'detail': 'Experience not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    experience.delete()
+    return Response({'detail': 'Experience deleted successfully.'}, status=status.HTTP_200_OK)
 
 
 
@@ -349,6 +396,10 @@ def add_comment(request, post_id):
     comment = Comment.objects.create(user=request.user, post=post, c_content=c_content)
     serializer = CommentSerializer(comment)
     return Response(serializer.data, status=201)
+
+
+
+
 
 # --------------------------------------------------------
 # 🔹 POST VIEWSET (supports text + media upload)
@@ -413,6 +464,18 @@ class PostViewSet(viewsets.ModelViewSet):
                 action="liked your post",
                 post=post,
             )
+            from accounts.firebase_utils import push_notification_to_firebase
+
+            push_notification_to_firebase(
+                user_id=post.user.id,
+                data={
+                    "action": "liked your post",
+                    "actor": request.user.id,
+                    "post": post.id,
+                    "created_at": str(notification.created_at),
+                    "is_read": False
+                }
+            )
         return Response({"message": "Liked"}, status=status.HTTP_201_CREATED)
 
     # Bookmark a post
@@ -442,6 +505,18 @@ class PostViewSet(viewsets.ModelViewSet):
                 action="commented on your post",
                 post=post,
             )
+            from accounts.firebase_utils import push_notification_to_firebase
+
+            push_notification_to_firebase(
+                user_id=post.user.id,
+                data={
+                    "action": "commented on your post",
+                    "actor": request.user.id,
+                    "post": post.id,
+                    "created_at": str(notification.created_at),
+                    "is_read": False
+                }
+            )
         serializer = CommentSerializer(comment)
         return Response(serializer.data, status=201)
 
@@ -453,6 +528,78 @@ class PostViewSet(viewsets.ModelViewSet):
         posts = Post.objects.filter(user=request.user).order_by('-created_at')
         serializer = self.get_serializer(posts, many=True, context={'request': request})
         return Response(serializer.data)
+    
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def my_bookmarks(self, request):
+        bookmarks = (
+            Bookmark.objects
+            .filter(user=request.user)
+            .select_related("post", "post__user")
+            .prefetch_related("post__media", "post__comments")
+        )
+
+        posts = [b.post for b in bookmarks]
+
+        serializer = PostSerializer(
+            posts,
+            many=True,
+            context={"request": request}
+        )
+        return Response(serializer.data)
+    
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def share(self, request, pk=None):
+        post = self.get_object()
+        receiver_id = request.data.get("receiver")
+
+        if not receiver_id:
+            return Response(
+                {"error": "Receiver is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            receiver = User.objects.get(id=receiver_id)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Receiver not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ✅ Use existing Message model
+        message = Message.objects.create(
+            sender=request.user,
+            receiver=receiver,
+            post=post,
+            content="Shared a post"
+        )
+
+        # Notification
+        if receiver != request.user:
+            notification = Notification.objects.create(
+                user=receiver,
+                actor=request.user,
+                action="shared a post with you",
+                post=post
+            )
+
+            from accounts.firebase_utils import push_notification_to_firebase
+            push_notification_to_firebase(
+                user_id=receiver.id,
+                data={
+                    "action": "shared a post with you",
+                    "actor": request.user.id,
+                    "post": post.id,
+                    "created_at": str(notification.created_at),
+                    "is_read": False
+                }
+            )
+
+        return Response(
+            {"message": "Post shared successfully"},
+            status=status.HTTP_201_CREATED
+        )
 
 
 
@@ -460,22 +607,74 @@ class PostViewSet(viewsets.ModelViewSet):
 # 🔹 USER PROFILE VIEWSET
 # --------------------------------------------------------
 class UserProfileViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        # Only allow access to the authenticated user's profile
         return User.objects.filter(id=self.request.user.id)
 
-    def perform_update(self, serializer):
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+    def list(self, request, *args, **kwargs):
+        # GET /profile/ → return current user's profile
+        user = request.user
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        # GET /profile/{id}/ → only allow self
+        user = request.user
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        # PUT / PATCH → update current user's profile
+        user = request.user
+        serializer = self.get_serializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        # PATCH → update current user's profile partially
+        return self.update(request, *args, **kwargs)
+
+
+
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def get_speakers(request):
     speakers = User.objects.filter(role='speaker')
     serializer = UserSerializer(speakers, many=True, context={'request': request})
     return Response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_speaker_by_id(request, id):
+    try:
+        speaker = User.objects.get(id=id, role='speaker')
+    except User.DoesNotExist:
+        return Response({"detail": "Speaker not found"}, status=404)
+
+    serializer = UserSerializer(speaker, context={'request': request})
+    return Response(serializer.data)
+
 
 
 
@@ -484,7 +683,6 @@ class HandshakeViewSet(viewsets.ModelViewSet):
     serializer_class = HandshakeSerializer
     permission_classes = [IsAuthenticated]
 
-    # Normal user sends handshake to speaker
     @action(detail=False, methods=["post"])
     def send(self, request):
         receiver_id = request.data.get("receiver_id")
@@ -504,13 +702,31 @@ class HandshakeViewSet(viewsets.ModelViewSet):
                 "status": existing.status
             })
 
+        # Create handshake
         handshake = HandshakeRequest.objects.create(
             sender=sender,
             receiver_id=receiver_id,
             status="pending"
         )
 
-        return Response(HandshakeSerializer(handshake).data, status=201)
+        # Fetch receiver
+        receiver = User.objects.get(id=receiver_id)
+
+        # ------- SEND EMAIL -------
+        subject = "You received a Handshake Request"
+        message = f"Hello {receiver.first_name},\n\nYou have received a handshake request from {sender.first_name} {sender.last_name}.\n\nPlease check your dashboard to respond."
+        
+        send_mail(
+            subject,
+            message,
+            None,  # uses DEFAULT_FROM_EMAIL
+            [receiver.email],
+            fail_silently=False,  # for debugging
+        )
+
+        return Response(HandshakeSerializer(handshake, context={'request': request}).data)
+
+
 
     # Speaker accepts handshake
     @action(detail=True, methods=["post"])
@@ -529,6 +745,18 @@ class HandshakeViewSet(viewsets.ModelViewSet):
             actor=handshake.receiver,
             action="accepted your handshake request",
             handshake=handshake,
+        )
+        from accounts.firebase_utils import push_notification_to_firebase
+
+        push_notification_to_firebase(
+            user_id=handshake.sender.id,
+            data={
+                "action": "accepted your handshake request",
+                "actor": handshake.receiver.id,
+                "handshake": handshake.id,
+                "created_at": str(notification.created_at),
+                "is_read": False
+            }
         )
         return Response({"message": "Handshake accepted"})
 
@@ -550,6 +778,18 @@ class HandshakeViewSet(viewsets.ModelViewSet):
             action="declined your handshake request",
             handshake=handshake,
         )
+        from accounts.firebase_utils import push_notification_to_firebase
+
+        push_notification_to_firebase(
+            user_id=handshake.sender.id,
+            data={
+                "action": "declined your handshake request",
+                "actor": handshake.receiver.id,
+                "handshake": handshake.id,
+                "created_at": str(notification.created_at),
+                "is_read": False
+            }
+        )
         return Response({"message": "Handshake declined"})
 
     # Logged-in user requests (both sent & received)
@@ -560,9 +800,29 @@ class HandshakeViewSet(viewsets.ModelViewSet):
         received = HandshakeRequest.objects.filter(receiver=user).order_by("-created_at")
 
         return Response({
-            "sent": HandshakeSerializer(sent, many=True).data,
-            "received": HandshakeSerializer(received, many=True).data,
+            "sent": HandshakeSerializer(sent, many=True, context={"request": request}).data,
+            "received": HandshakeSerializer(received, many=True, context={"request": request}).data,
         })
+
+    
+    # --------------------------------------------------------
+    # CANCEL HANDSHAKE (only sender can cancel)
+    # --------------------------------------------------------
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        handshake = self.get_object()
+
+        if handshake.sender != request.user:
+            return Response({"error": "Not allowed"}, status=403)
+
+        if handshake.status != "pending":
+            return Response({"error": "Only pending requests can be cancelled"}, status=400)
+
+        handshake.delete()
+
+        return Response({"message": "Handshake request removed"})
+
+
 
 
 
@@ -588,12 +848,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
         """
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({"unread": count})
-
+    
     @action(detail=True, methods=["post"])
     def mark_read(self, request, pk=None):
-        """
-        Mark a single notification as read
-        """
         notification = self.get_object()
         notification.is_read = True
         notification.save()
@@ -601,11 +858,23 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"])
     def mark_all_read(self, request):
-        """
-        Mark all notifications of the user as read
-        """
-        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        Notification.objects.filter(user=request.user).update(is_read=True)
         return Response({"message": "All notifications marked as read"})
+    
+    @action(detail=True, methods=["delete"])
+    def delete_notification(self, request, pk=None):
+        notification = self.get_object()
+        notification.delete()
+        return Response({"message": "Notification deleted"})
+    
+    
+    # ✅ THIS IS THE IMPORTANT FIX
+    @action(detail=False, methods=["delete"])
+    def clear_all(self, request):
+        Notification.objects.filter(user=request.user).delete()
+        return Response({"message": "All notifications cleared"})
+
+
 
 
 
@@ -630,91 +899,298 @@ class ProgramViewSet(viewsets.ModelViewSet):
 
 
 
+from django.db.models import Q
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.db.models import Q, Max
 
 class MessageViewSet(viewsets.ModelViewSet):
-    queryset = Message.objects.all()
     serializer_class = MessageSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        User can only see their own messages
+        """
+        user = self.request.user
+        return Message.objects.filter(
+            Q(sender=user) | Q(receiver=user)
+        ).select_related(
+            "sender", "receiver"
+        ).prefetch_related(
+            "post__media"
+        ).order_by("timestamp")
 
     def get_serializer_context(self):
         return {"request": self.request}
 
     def create(self, request, *args, **kwargs):
-        serializer = MessageSerializer(data=request.data, context={'request': request})
+        """
+        Send a message
+        """
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save(sender=request.user)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=["get"])
-    def conversations(self, request):
-        user = request.user
-
-        # Find unique users the current user has messaged with
-        messages = Message.objects.filter(Q(sender=user) | Q(receiver=user))
-        
-        # Get latest message per user
-        conversations_dict = {}
-        for msg in messages.order_by("timestamp"):
-            other_user = msg.receiver if msg.sender == user else msg.sender
-            conversations_dict[other_user.id] = {
-                "user_id": other_user.id,
-                "first_name": other_user.first_name,
-                "last_name": other_user.last_name,
-                "email": other_user.email,
-                "profile_image": request.build_absolute_uri(other_user.profile_image.url) if other_user.profile_image else None,
-                "last_message": msg.content,
-                "timestamp": msg.timestamp
-            }
-
-        # Return as a list
-        return Response(list(conversations_dict.values()))
-
-    @action(detail=False, methods=['get'], url_path='chat/(?P<user_id>[^/.]+)')
+    @action(detail=False, methods=["get"], url_path="chat/(?P<user_id>[^/.]+)")
     def chat_history(self, request, user_id=None):
+        """
+        Get chat history with a specific user
+        """
         user = request.user
+
         messages = Message.objects.filter(
             Q(sender=user, receiver_id=user_id) |
             Q(sender_id=user_id, receiver=user)
+        ).select_related(
+            "sender", "receiver"
+        ).prefetch_related(
+            "post__media"
         ).order_by("timestamp")
+
         serializer = self.get_serializer(messages, many=True)
         return Response(serializer.data)
     
+    @action(detail=False, methods=["post"], url_path="mark-read/(?P<user_id>[^/.]+)")
+    def mark_read(self, request, user_id=None):
+        user = request.user
+
+        Message.objects.filter(
+            sender_id=user_id,
+            receiver=user,
+            is_read=False
+        ).update(is_read=True)
+
+        return Response({"status": "ok"})
+
+    @action(detail=False, methods=["get"])
+    def latest(self, request):
+        """
+        Return latest 3 messages (sent or received)
+        """
+        messages = (
+            Message.objects
+            .filter(Q(sender=request.user) | Q(receiver=request.user))
+            .order_by("-timestamp")[:3]
+        )
+
+        serializer = self.get_serializer(messages, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=["get"], url_path="latest-conversations")
+    def latest_conversations(self, request):
+        user = request.user
+
+        messages = (
+            Message.objects
+            .filter(Q(sender=user) | Q(receiver=user))
+            .select_related("sender", "receiver")
+            .order_by("-timestamp")
+        )
+
+        conversations = {}
+        for msg in messages:
+            other_user = msg.receiver if msg.sender == user else msg.sender
+
+            if other_user.id not in conversations:
+                conversations[other_user.id] = {
+                    "user": UserMiniSerializer(
+                        other_user,
+                        context={"request": request}
+                    ).data,
+                    "last_message": MessageSerializer(
+                        msg,
+                        context={"request": request}
+                    ).data,
+                }
+
+            if len(conversations) == 3:
+                break
+
+        return Response(list(conversations.values()))
 
 
+from rest_framework.viewsets import ViewSet
 
-class ConversationViewSet(viewsets.ViewSet):
+
+class ConversationViewSet(ViewSet):
     permission_classes = [IsAuthenticated]
 
+    
     def list(self, request):
         user = request.user
 
-        # find all messages where user participated
         messages = Message.objects.filter(
             Q(sender=user) | Q(receiver=user)
+        ).select_related(
+            "sender", "receiver"
+        ).prefetch_related(
+            "post__media"
         ).order_by("-timestamp")
 
-        conversations = {}  # key = other_user_id
+        conversations = {}
 
         for msg in messages:
-            # determine with which user this message was exchanged
-            other = msg.receiver if msg.sender == user else msg.sender
+            other_user = msg.receiver if msg.sender == user else msg.sender
 
-            # if no entry yet, add the latest message (because sorted desc)
-            if other.id not in conversations:
-                conversations[other.id] = {
-                    "user": UserSerializer(other, context={"request": request}).data,
-                    "last_message": MessageSerializer(msg, context={"request": request}).data
+            # take only latest message per user
+            if other_user.id not in conversations:
+                conversations[other_user.id] = {
+                    "user": UserSerializer(
+                        other_user,
+                        context={"request": request}
+                    ).data,
+                    "last_message": MessageSerializer(
+                        msg,
+                        context={"request": request}
+                    ).data,
+                    "unread_count": Message.objects.filter(
+                        sender=other_user,
+                        receiver=user,
+                        is_read=False
+                    ).count()
                 }
 
-        # return a list sorted by latest message timestamp
-        return Response(sorted(
-            conversations.values(),
-            key=lambda x: x["last_message"]["timestamp"],
-            reverse=True
-        ))
+        return Response(
+            sorted(
+                conversations.values(),
+                key=lambda x: x["last_message"]["timestamp"],
+                reverse=True
+            )
+        )
 
 
+
+
+
+
+
+class FolderViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Folder.objects.filter(user=self.request.user)
+
+    def get_serializer_class(self):
+        if self.action in ["create", "update", "partial_update", "rename", "move"]:
+            return FolderCreateSerializer
+        return FolderTreeSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    # GET /api/folders/tree/
+    @action(detail=False, methods=['get'])
+    def tree(self, request):
+        roots = Folder.objects.filter(user=request.user, parent=None)
+        serializer = FolderTreeSerializer(roots, many=True)
+        return Response(serializer.data)
+
+    # ------------------------------
+    # 🔹 RENAME FOLDER
+    # POST /api/folders/<id>/rename/
+    # ------------------------------
+    @action(detail=True, methods=["post"])
+    def rename(self, request, pk=None):
+        folder = self.get_object()
+        new_name = request.data.get("name")
+
+        if not new_name:
+            return Response({"error": "Folder name required"}, status=400)
+
+        folder.name = new_name
+        folder.save()
+        return Response({"message": "Folder renamed successfully"})
+
+    # ------------------------------
+    # 🔹 MOVE FOLDER
+    # POST /api/folders/<id>/move/
+    # ------------------------------
+    @action(detail=True, methods=["post"])
+    def move(self, request, pk=None):
+        folder = self.get_object()
+        new_parent_id = request.data.get("parent_id")
+
+        if new_parent_id is None:
+            folder.parent = None
+        else:
+            try:
+                new_parent = Folder.objects.get(id=new_parent_id, user=request.user)
+                folder.parent = new_parent
+            except Folder.DoesNotExist:
+                return Response({"error": "Invalid parent folder"}, status=400)
+
+        folder.save()
+        return Response({"message": "Folder moved successfully"})
+
+    # ------------------------------
+    # DELETE folder is already built-in (DELETE /folders/<id>/)
+    # ------------------------------
+
+
+
+
+
+
+
+class FolderItemViewSet(viewsets.ModelViewSet):
+    serializer_class = FolderItemSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return FolderItem.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    # ------------------------------
+    # 🔹 RENAME FILE
+    # POST /api/folder-items/<id>/rename/
+    # ------------------------------
+    @action(detail=True, methods=["post"])
+    def rename(self, request, pk=None):
+        item = self.get_object()
+        new_name = request.data.get("name")
+
+        if not new_name:
+            return Response({"error": "Name required"}, status=400)
+
+        item.name = new_name
+        item.save()
+        return Response({"message": "File renamed successfully"})
+
+    # ------------------------------
+    # 🔹 MOVE FILE
+    # POST /api/folder-items/<id>/move/
+    # ------------------------------
+    @action(detail=True, methods=["post"])
+    def move(self, request, pk=None):
+        item = self.get_object()
+        new_parent_id = request.data.get("parent_id")
+
+        try:
+            new_parent = Folder.objects.get(id=new_parent_id, user=request.user)
+            item.parent = new_parent
+            item.save()
+            return Response({"message": "File moved successfully"})
+        except Folder.DoesNotExist:
+            return Response({"error": "Invalid folder"}, status=400)
+
+
+from rest_framework.viewsets import ModelViewSet
+
+class CalendarEventViewSet(ModelViewSet):
+    serializer_class = CalendarEventSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return CalendarEvent.objects.filter(user=self.request.user).order_by("start_time")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+        
 

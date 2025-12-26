@@ -7,10 +7,15 @@ from django.conf import settings
 
 class User(AbstractUser):
     username = None
+
+    title = models.CharField(max_length=20, blank=True, null=True)
+
     email = models.EmailField('email address', unique=True)
     first_name = models.CharField(max_length=150)
+    middle_name = models.CharField(max_length=150, blank=True, null=True)
     last_name = models.CharField(max_length=150, blank=True)
     profile_image = models.ImageField(upload_to='profiles/', null=True, blank=True)
+    profile_title = models.CharField(max_length=255, blank=True, null=True)
 
     
     ROLE_CHOICES = (
@@ -28,6 +33,179 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+
+
+
+class PersonalDetail(models.Model):
+    """
+    Extended personal & research profile
+    """
+
+    user = models.OneToOneField( settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_detail" )
+
+    # Bio
+    biosketch = models.TextField( blank=True, null=True)
+
+    # Research / Academic links (multiple allowed via JSON)
+    research_links = models.JSONField(blank=True, null=True, help_text="List of links like ResearchGate, PubMed, Google Scholar, NCBI" )
+
+    # Social
+    x_handle = models.CharField(max_length=255, blank=True, null=True, help_text="Twitter/X username without URL")
+
+    linkedin = models.URLField( blank=True, null=True)
+    # Location & demographics
+    city = models.CharField( max_length=255, blank=True, null=True)
+
+    country = models.CharField( max_length=100, blank=True, null=True)
+
+    GENDER_CHOICES = (
+        ("male", "Male"),
+        ("female", "Female"),
+        ("other", "Other"),
+        ("prefer_not_to_say", "Prefer not to say"),
+    )
+    gender = models.CharField(
+        max_length=20,
+        choices=GENDER_CHOICES,
+        blank=True,
+        null=True
+    )
+
+    dob = models.DateField( blank=True, null=True)
+
+
+    # Publications
+    articles_journals = models.TextField( blank=True, null=True)
+
+    book_chapters = models.TextField( blank=True, null=True)
+
+    def __str__(self):
+        return f"Personal Detail - {self.user.email}"
+    
+
+
+
+
+    
+class Education(models.Model):
+    user = models.ForeignKey( settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="education" )
+
+    # --------------------
+    # Core education info
+    # --------------------
+
+    DEGREE_CHOICES = ( ("bachelor", "Bachelor"), ("master", "Master"), ("phd", "PhD"),
+        ("postdoc", "Postdoctoral"),
+        ("diploma", "Diploma"),
+        ("other", "Other"),
+    )
+    degree = models.CharField( max_length=50, choices=DEGREE_CHOICES)
+    course_name = models.CharField( max_length=255, help_text="Course / Program name (e.g. Biotechnology, AI)" )
+    specialization = models.CharField( max_length=255, blank=True, null=True)
+    university = models.CharField( max_length=255, blank=True, null=True)
+    institute = models.CharField( max_length=255, blank=True, null=True)
+    place = models.CharField( max_length=255, blank=True, null=True, help_text="City / State")
+    country = models.CharField( max_length=100, blank=True, null=True)
+    start_year = models.PositiveIntegerField( blank=True, null=True)
+    end_year = models.PositiveIntegerField( blank=True, null=True)
+    is_current = models.BooleanField( default=False)
+
+    # --------------------
+    # Research-specific (PhD / PostDoc)
+    # --------------------
+
+    topic = models.CharField( max_length=500, blank=True, null=True, help_text="Thesis / Research topic")
+    lab_or_department = models.CharField( max_length=255, blank=True, null=True)
+    research_interests = models.JSONField( blank=True, null=True, help_text="List of research interests (only for PhD/PostDoc)")
+    research_summary = models.TextField( blank=True, null=True, help_text="Brief discussion of research work")
+
+    # --------------------
+    # Utility
+    # --------------------
+
+    order = models.PositiveIntegerField( default=0, help_text="Display order")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "-start_year"]
+
+    def __str__(self):
+        return f"{self.degree} - {self.course_name} ({self.university or self.institute})"
+
+
+
+
+class ProfessionalDetail(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="professional_detail"
+    )
+
+    # ===== CURRENT EXPERIENCE =====
+    current_role = models.CharField(max_length=255, blank=True, null=True)
+    current_organization = models.CharField(max_length=255, blank=True, null=True)
+    current_department = models.CharField(max_length=255, blank=True, null=True)
+
+    MONTH_CHOICES = [(i, i) for i in range(1, 13)]
+    current_start_month = models.IntegerField(choices=MONTH_CHOICES, blank=True, null=True)
+    current_start_year = models.IntegerField(blank=True, null=True)
+    current_description = models.TextField(blank=True, null=True)
+
+    # ===== PROFESSIONAL CONTACT =====
+    work_email = models.EmailField(blank=True, null=True)
+    contact_number = models.CharField(max_length=20, blank=True, null=True)
+    website = models.URLField(blank=True, null=True)
+    lab = models.CharField(max_length=255, blank=True, null=True)
+    work_address = models.TextField(blank=True, null=True)
+
+    # ===== SKILLS =====
+    skill_set = models.TextField(blank=True, null=True)
+    languages_spoken = models.CharField(max_length=255, blank=True, null=True)
+
+    certifications = models.FileField(
+        upload_to="certifications/",
+        blank=True,
+        null=True
+    )
+
+    def __str__(self):
+        return f"Professional Detail - {self.user.email}"
+    
+
+
+class PastExperience(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="past_experiences"
+    )
+
+    role = models.CharField(max_length=255)
+    organization = models.CharField(max_length=255)
+    department = models.CharField(max_length=255, blank=True, null=True)
+
+    start_month = models.IntegerField(
+        choices=[(i, i) for i in range(1, 13)]
+    )
+    start_year = models.IntegerField()
+
+    end_month = models.IntegerField(
+        choices=[(i, i) for i in range(1, 13)]
+    )
+    end_year = models.IntegerField()
+
+    description = models.TextField(
+        blank=True,
+        null=True,
+        help_text="Brief description of work done"
+    )
+
+    def __str__(self):
+        return f"{self.role} at {self.organization}"
+
+    class Meta:
+        ordering = ["-end_year", "-end_month"]
 
 
 
@@ -78,54 +256,6 @@ class Program(models.Model):
 
     def __str__(self):
         return f"Program {self.id} - {self.topic} ({self.event.name})"
-
-
-
-
-
-class PersonalDetail(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='personal_detail')
-    biosketch = models.TextField(blank=True, null=True)
-    researchgate_link = models.URLField(blank=True, null=True)
-    pubmed_link = models.URLField(blank=True, null=True)
-    google_scholar_link = models.URLField(blank=True, null=True)
-    x_handle = models.CharField(max_length=255, blank=True, null=True)
-    city = models.CharField(max_length=255, blank=True, null=True)
-    gender = models.CharField(max_length=20, blank=True, null=True)
-    country = models.CharField(max_length=100, blank=True, null=True)
-    dob = models.DateField(blank=True, null=True)    
-
-    # Publications
-    articles_journals = models.TextField(blank=True, null=True)
-    book_chapters = models.TextField(blank=True, null=True)
-
-    def __str__(self):
-        return f"Personal Details - {self.user.email}"
-    
-class Education(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='education')
-    degree = models.CharField(blank=True, null=True, max_length=200)
-    course_name = models.CharField(blank=True, null=True, max_length=200)
-    end_date = models.DateField(null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.degree} - {self.course_name}"
-
-
-
-
-
-class ProfessionalDetail(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='professional_detail')
-    current_experience = models.TextField(blank=True, null=True)
-    past_experiences = models.TextField(blank=True, null=True)
-    skill_set = models.TextField(blank=True, null=True)
-    languages_spoken = models.CharField(max_length=255, blank=True, null=True)
-    certifications = models.FileField(upload_to='certifications/', null=True, blank=True)
-
-    def __str__(self):
-        return f"Professional Details - {self.user.email}"
-
 
 
 
@@ -252,44 +382,155 @@ class HandshakeRequest(models.Model):
 
 
 
+from firebase_admin import db
+
 class Notification(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="notifications", on_delete=models.CASCADE)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     action = models.CharField(max_length=255)
 
-    post = models.ForeignKey(Post, null=True, blank=True, on_delete=models.CASCADE)
-    handshake = models.ForeignKey(HandshakeRequest, null=True, blank=True, on_delete=models.CASCADE)
+    post = models.ForeignKey("Post", null=True, blank=True, on_delete=models.CASCADE)
+    handshake = models.ForeignKey("HandshakeRequest", null=True, blank=True, on_delete=models.CASCADE)
 
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.actor} {self.action}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        # Push to Firebase realtime database
+        ref = db.reference(f"notifications/{self.user.id}")
+        ref.push({
+            "id": self.id,
+            "actor_id": self.actor.id,
+            "actor_name": self.actor.first_name,
+            "action": self.action,
+            "post": self.post.id if self.post else None,
+            "handshake": self.handshake.id if self.handshake else None,
+            "is_read": self.is_read,
+            "created_at": self.created_at.isoformat(),
+        })
+
     
 
 
 
 class Message(models.Model):
     sender = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
+        settings.AUTH_USER_MODEL,
         related_name='sent_messages',
         on_delete=models.CASCADE
     )
     receiver = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
+        settings.AUTH_USER_MODEL,
         related_name='received_messages',
         on_delete=models.CASCADE
     )
-    
-    content = models.TextField()
-    timestamp = models.DateTimeField(auto_now_add=True)
 
+    # 🔥 NEW (optional)
+    post = models.ForeignKey(
+        Post,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="shared_messages"
+    )
+
+    content = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
     is_read = models.BooleanField(default=False)
 
     class Meta:
-        ordering = ['timestamp']  # chat appears in ascending order
+        ordering = ['timestamp']
 
     def __str__(self):
+        if self.post:
+            return f"{self.sender} → {self.receiver}: shared a post"
         return f"{self.sender} → {self.receiver}: {self.content[:20]}"
 
 
+
+
+
+
+
+def user_file_upload_path(instance, filename):
+    # uploaded as: user_<id>/folders/<folder_id>/<filename>
+    return f"user_{instance.user.id}/folders/{instance.folder.id}/{filename}"
+
+
+class Folder(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="folders"
+    )
+    name = models.CharField(max_length=255, blank=True, null=True)
+
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="subfolders"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Folder"
+        verbose_name_plural = "Folders"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+    
+
+
+
+class FolderItem(models.Model):
+    folder = models.ForeignKey(
+        Folder,
+        on_delete=models.CASCADE,
+        related_name="items"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="folder_items"
+    )
+
+    
+    url = models.CharField(max_length=500, null=True, blank=True)
+    title = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+# file = models.FileField(upload_to=user_file_upload_path, null=True, blank=True)
+    # file_name = models.CharField(max_length=255)
+    # file_type = models.CharField(max_length=50)   # pdf, docx, png, etc.
+
+
+class CalendarEvent(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="calendar_events"
+    )
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField(null=True, blank=True)
+    remind_before = models.IntegerField(default=10)  # minutes
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.title} - {self.user}"
