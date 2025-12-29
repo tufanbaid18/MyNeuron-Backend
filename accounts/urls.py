@@ -5,7 +5,8 @@ from .views import (
     upload_profile_image, get_personal_detail,
     update_personal_detail, get_professional_detail,
     update_professional_detail, add_comment, get_education_details, add_education_detail,
-    update_education_detail, delete_education_detail, get_speakers, get_speaker_by_id,
+    update_education_detail, delete_education_detail, get_speakers, get_speaker_by_id, get_past_experiences, add_past_experience,
+    update_past_experience, delete_past_experience,
     UserViewSet, EventViewSet, MemberViewSet,
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet
@@ -51,4 +52,9 @@ urlpatterns = [
     path("api/speakers/", get_speakers),
     path("api/speakers/<int:id>/", get_speaker_by_id, name="get_speaker_by_id"),
     path("api/conversations/", ConversationViewSet.as_view({"get": "list"})),
+        # 🔥 ADD THESE — PAST EXPERIENCE 🔥
+    path('api/profile/past-experience/', get_past_experiences),
+    path('api/profile/past-experience/add/', add_past_experience),
+    path('api/profile/past-experience/<int:pk>/update/', update_past_experience),
+    path('api/profile/past-experience/<int:pk>/delete/', delete_past_experience),
 ]

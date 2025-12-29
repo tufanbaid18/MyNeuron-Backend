@@ -193,31 +193,146 @@ def api_event_register(request):
 
 
 
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def upload_profile_image(request):
+#     user = request.user
+#     image_data = request.data.get('profile_image')
+
+#     if not image_data:
+#         return Response({'error': 'No image provided'}, status=400)
+
+#     try:
+#         # Decode base64 string and save
+#         format, imgstr = image_data.split(';base64,')
+#         ext = format.split('/')[-1]
+#         file_name = f"{uuid.uuid4()}.{ext}"
+#         user.profile_image.save(file_name, ContentFile(base64.b64decode(imgstr)), save=True)
+
+#         return Response({
+#             'message': 'Profile image uploaded successfully',
+#             'profile_image': user.profile_image.url
+#         }, status=200)
+
+#     except Exception as e:
+#         return Response({'error': str(e)}, status=500)
+    
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework import status
+from django.core.files.base import ContentFile
+import base64, uuid
+
+import uuid
+import base64
+from django.core.files.base import ContentFile
+
+import uuid
+import base64
+from django.core.files.base import ContentFile
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def upload_profile_image(request):
     user = request.user
-    image_data = request.data.get('profile_image')
-
-    if not image_data:
-        return Response({'error': 'No image provided'}, status=400)
+    image_file = request.FILES.get('profile_image')
+    image_base64 = request.data.get('profile_image')
 
     try:
-        # Decode base64 string and save
-        format, imgstr = image_data.split(';base64,')
-        ext = format.split('/')[-1]
-        file_name = f"{uuid.uuid4()}.{ext}"
-        user.profile_image.save(file_name, ContentFile(base64.b64decode(imgstr)), save=True)
+        if image_file:
+            ext = image_file.name.split('.')[-1]
+            file_name = f"{uuid.uuid4()}.{ext}"
+            user.profile_image.save(file_name, image_file, save=True)
+        elif image_base64:
+            format, imgstr = image_base64.split(';base64,')
+            ext = format.split('/')[-1]
+            file_name = f"{uuid.uuid4()}.{ext}"
+            user.profile_image.save(file_name, ContentFile(base64.b64decode(imgstr)), save=True)
+        else:
+            return Response({'error': 'No image provided'}, status=400)
 
         return Response({
             'message': 'Profile image uploaded successfully',
-            'profile_image': user.profile_image.url
+            'profile_image': f"{request.scheme}://{request.get_host()}{user.profile_image.url}"
         }, status=200)
 
     except Exception as e:
         return Response({'error': str(e)}, status=500)
 
 
+
+
+
+
+
+
+# --------------------------------------------------------
+# 🔹 USER PROFILE VIEWSET
+# --------------------------------------------------------
+class UserProfileViewSet(viewsets.ModelViewSet):
+    serializer_class = UserProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Only allow access to the authenticated user's profile
+        return User.objects.filter(id=self.request.user.id)
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+
+    def list(self, request, *args, **kwargs):
+        # GET /profile/ → return current user's profile
+        user = request.user
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
+
+    def retrieve(self, request, *args, **kwargs):
+        # GET /profile/{id}/ → only allow self
+        user = request.user
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        # PUT / PATCH → update current user's profile
+        user = request.user
+        serializer = self.get_serializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        # PATCH → update current user's profile partially
+        return self.update(request, *args, **kwargs)
+
+
+    @action(detail=False, methods=['patch'], url_path='update-current')
+    def update_current(self, request):
+        """
+        PATCH /api/user-profile/update-current/
+        Update the currently logged-in user's profile.
+        """
+        user = request.user
+        serializer = self.get_serializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
+
+
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
 
 
 
@@ -601,57 +716,6 @@ class PostViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED
         )
 
-
-
-# --------------------------------------------------------
-# 🔹 USER PROFILE VIEWSET
-# --------------------------------------------------------
-class UserProfileViewSet(viewsets.ModelViewSet):
-    serializer_class = UserProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        # Only allow access to the authenticated user's profile
-        return User.objects.filter(id=self.request.user.id)
-
-    def get_serializer_context(self):
-        return {"request": self.request}
-
-    def list(self, request, *args, **kwargs):
-        # GET /profile/ → return current user's profile
-        user = request.user
-        serializer = self.get_serializer(user)
-        return Response(serializer.data)
-
-    def retrieve(self, request, *args, **kwargs):
-        # GET /profile/{id}/ → only allow self
-        user = request.user
-        serializer = self.get_serializer(user)
-        return Response(serializer.data)
-
-    def update(self, request, *args, **kwargs):
-        # PUT / PATCH → update current user's profile
-        user = request.user
-        serializer = self.get_serializer(user, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response(serializer.data)
-
-    def partial_update(self, request, *args, **kwargs):
-        # PATCH → update current user's profile partially
-        return self.update(request, *args, **kwargs)
-
-
-
-
-
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_serializer_context(self):
-        return {"request": self.request}
 
 
 

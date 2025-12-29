@@ -58,15 +58,9 @@ class PersonalDetail(models.Model):
 
     country = models.CharField( max_length=100, blank=True, null=True)
 
-    GENDER_CHOICES = (
-        ("male", "Male"),
-        ("female", "Female"),
-        ("other", "Other"),
-        ("prefer_not_to_say", "Prefer not to say"),
-    )
+
     gender = models.CharField(
         max_length=20,
-        choices=GENDER_CHOICES,
         blank=True,
         null=True
     )
@@ -94,13 +88,9 @@ class Education(models.Model):
     # Core education info
     # --------------------
 
-    DEGREE_CHOICES = ( ("bachelor", "Bachelor"), ("master", "Master"), ("phd", "PhD"),
-        ("postdoc", "Postdoctoral"),
-        ("diploma", "Diploma"),
-        ("other", "Other"),
-    )
-    degree = models.CharField( max_length=50, choices=DEGREE_CHOICES)
-    course_name = models.CharField( max_length=255, help_text="Course / Program name (e.g. Biotechnology, AI)" )
+
+    degree = models.CharField( max_length=50)
+    course_name = models.CharField( max_length=255, blank=True, null=True )
     specialization = models.CharField( max_length=255, blank=True, null=True)
     university = models.CharField( max_length=255, blank=True, null=True)
     institute = models.CharField( max_length=255, blank=True, null=True)

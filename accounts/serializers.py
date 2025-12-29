@@ -156,29 +156,7 @@ class ProfessionalDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["user"]
 
-    def update(self, instance, validated_data):
-        past_data = validated_data.pop("past_experiences", [])
-
-        # Update professional details fields
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-
-        # Update or create past experiences
-        existing_ids = []
-        for past in past_data:
-            past_id = past.get("id")
-            if past_id:
-                PastExperience.objects.filter(id=past_id, user=instance.user).update(**past)
-                existing_ids.append(past_id)
-            else:
-                obj = PastExperience.objects.create(user=instance.user, **past)
-                existing_ids.append(obj.id)
-
-        # Delete old past experiences that are not in the update
-        PastExperience.objects.filter(user=instance.user).exclude(id__in=existing_ids).delete()
-
-        return instance
+    
 
 
 
