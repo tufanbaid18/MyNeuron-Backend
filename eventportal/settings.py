@@ -64,7 +64,7 @@ DATABASES = {
         'NAME': 'myneuron',           # your database name
         'USER': 'Tufan',              # MySQL username
         'PASSWORD': 'Tufan@253385',   # MySQL password
-        'HOST': 'localhost',           # usually localhost
+        'HOST': 'db',           # usually localhost
         'PORT': '3306',                # default MySQL port
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
