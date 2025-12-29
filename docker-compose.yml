@@ -25,14 +25,14 @@ services:
     volumes:
       - /bencos/myneuron/db:/var/lib/mysql
     ports:
-      - "3309:3306"
+      - "3305:3306"
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
     container_name: myneuron_phpmyadmin
     restart: unless-stopped
     ports:
-      - "8085:80"
+      - "8082:80"
     environment:
       PMA_HOST: db
       PMA_USER: 'Tufan'
