@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from decouple import config
 
 import pymysql
 pymysql.install_as_MySQLdb()
@@ -60,15 +61,15 @@ WSGI_APPLICATION = 'eventportal.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'myneuron',           # your database name
-        'USER': 'Tufan',              # MySQL username
-        'PASSWORD': 'Tufan@253385',   # MySQL password
-        'HOST': 'db',           # usually localhost
-        'PORT': '3306',                # default MySQL port
+        'ENGINE': config('DB_ENGINE'),
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT', cast=int),
         'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
+            'init_command': f"SET sql_mode='{config('DB_SQL_MODE')}'",
+            'charset': config('DB_CHARSET'),
         },
     }
 }

@@ -8,7 +8,7 @@ from .models import (
     Post,
     PostMedia,
     Education,
-    CalendarEvent
+    CalendarEvent, ScientificInterest
 )
 from .validators import validate_email, validate_password_complexity
 from .models import Comment, Program
@@ -44,6 +44,7 @@ class UserSerializer(serializers.ModelSerializer):
             "profile_title",
             "profile_image",
             "role",
+            "is_verified",
             "password",
             "confirm_password",
         ]
@@ -146,6 +147,7 @@ class ProfessionalDetailSerializer(serializers.ModelSerializer):
             "current_description",
             "work_email",
             "contact_number",
+            "emergency_contact_number",
             "website",
             "lab",
             "work_address",
@@ -157,7 +159,10 @@ class ProfessionalDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ["user"]
 
     
-
+class ScientificInterestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScientificInterest
+        exclude = ("user",)
 
 
 
@@ -165,6 +170,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     personal_detail = PersonalDetailSerializer(required=False)
     professional_detail = ProfessionalDetailSerializer(required=False)
     education = EducationSerializer(many=True, required=False)
+    scientific_interest = ScientificInterestSerializer(required=False)
 
     class Meta:
         model = User
@@ -174,17 +180,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "first_name",
             "middle_name",
             "last_name",
+            "title",
             "profile_title",
             "profile_image",
             "personal_detail",
             "professional_detail",
             "education",
+            "scientific_interest",
         ]
 
     def update(self, instance, validated_data):
         personal_data = validated_data.pop("personal_detail", {})
         professional_data = validated_data.pop("professional_detail", {})
         education_data = validated_data.pop("education", [])
+        scientific_data = validated_data.pop("scientific_interest", {})
 
         # ---------------- USER CORE FIELDS ----------------
         for attr, value in validated_data.items():
@@ -216,17 +225,23 @@ class UserProfileSerializer(serializers.ModelSerializer):
         for edu in education_data:
             edu_id = edu.get("id")
             if edu_id:
-                # Update existing
                 Education.objects.filter(id=edu_id, user=instance).update(**edu)
                 existing_ids.append(edu_id)
             else:
-                # Create new
                 new_obj = Education.objects.create(user=instance, **edu)
                 existing_ids.append(new_obj.id)
-        # Delete old education entries not in the update
+
         Education.objects.filter(user=instance).exclude(id__in=existing_ids).delete()
 
+        # ---------------- SCIENTIFIC INTEREST ----------------
+        if scientific_data:
+            ScientificInterest.objects.update_or_create(
+                user=instance,
+                defaults=scientific_data
+            )
+
         return instance
+
 
 
     
@@ -300,6 +315,7 @@ class PostSerializer(serializers.ModelSerializer):
     comment_count = serializers.SerializerMethodField()
 
     comments = CommentSerializer(many=True, read_only=True)
+    link_preview = serializers.JSONField(read_only=True)
 
     class Meta:
         model = Post
@@ -309,6 +325,7 @@ class PostSerializer(serializers.ModelSerializer):
             "title",
             "content",
             "media",
+            "link_preview",
             "created_at",
             "like_count",
             "bookmark_count",
@@ -328,8 +345,7 @@ class PostSerializer(serializers.ModelSerializer):
     def get_comment_count(self, obj):
         return obj.comments.count()
 
-
-
+    
 from .models import HandshakeRequest
 
 class HandshakeSerializer(serializers.ModelSerializer):
@@ -542,3 +558,104 @@ class CalendarEventSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["user", "created_at"]
 
+
+
+
+class PublicPersonalDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PersonalDetail
+        fields = [
+            "biosketch",
+            "research_links",
+            "x_handle",
+            "linkedin",
+            "city",
+            "country",
+            "articles_journals",
+            "book_chapters",
+        ]
+
+class PublicEducationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Education
+        fields = [
+            "degree",
+            "course_name",
+            "specialization",
+            "university",
+            "institute",
+            "place",
+            "country",
+            "start_year",
+            "end_year",
+            "is_current",
+            "topic",
+            "lab_or_department",
+            "research_interests",
+            "research_summary",
+        ]
+
+class PublicPastExperienceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PastExperience
+        fields = [
+            "role",
+            "organization",
+            "department",
+            "start_month",
+            "start_year",
+            "end_month",
+            "end_year",
+            "description",
+        ]
+
+class PublicProfessionalDetailSerializer(serializers.ModelSerializer):
+    past_experiences = PublicPastExperienceSerializer(
+        many=True,
+        source="user.past_experiences",
+        read_only=True
+    )
+
+    class Meta:
+        model = ProfessionalDetail
+        fields = [
+            "current_role",
+            "current_organization",
+            "current_department",
+            "current_start_month",
+            "current_start_year",
+            "current_description",
+            "lab",
+            "skill_set",
+            "languages_spoken",
+            "past_experiences",
+        ]
+
+
+class PublicUserProfileSerializer(serializers.ModelSerializer):
+    profile_image = serializers.SerializerMethodField()
+    personal_detail = PublicPersonalDetailSerializer(read_only=True)
+    professional_detail = PublicProfessionalDetailSerializer(read_only=True)
+    education = PublicEducationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "title",
+            "first_name",
+            "middle_name",
+            "last_name",
+            "profile_title",
+            "role",
+            "profile_image",
+            "personal_detail",
+            "professional_detail",
+            "education",
+        ]
+
+    def get_profile_image(self, obj):
+        request = self.context.get("request")
+        if obj.profile_image and request:
+            return request.build_absolute_uri(obj.profile_image.url)
+        return None

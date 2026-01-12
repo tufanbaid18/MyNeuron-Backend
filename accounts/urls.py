@@ -6,8 +6,9 @@ from .views import (
     update_personal_detail, get_professional_detail,
     update_professional_detail, add_comment, get_education_details, add_education_detail,
     update_education_detail, delete_education_detail, get_speakers, get_speaker_by_id, get_past_experiences, add_past_experience,
-    update_past_experience, delete_past_experience,
-    UserViewSet, EventViewSet, MemberViewSet,
+    update_past_experience, delete_past_experience, get_public_users, get_public_user_by_id, search_public_users, me, generate_qr_from_url,
+    get_scientific_interest, update_scientific_interest,
+    UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView,
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet
 )
@@ -52,9 +53,30 @@ urlpatterns = [
     path("api/speakers/", get_speakers),
     path("api/speakers/<int:id>/", get_speaker_by_id, name="get_speaker_by_id"),
     path("api/conversations/", ConversationViewSet.as_view({"get": "list"})),
+
         # 🔥 ADD THESE — PAST EXPERIENCE 🔥
     path('api/profile/past-experience/', get_past_experiences),
     path('api/profile/past-experience/add/', add_past_experience),
     path('api/profile/past-experience/<int:pk>/update/', update_past_experience),
     path('api/profile/past-experience/<int:pk>/delete/', delete_past_experience),
+
+    path("api/public/users/", get_public_users, name="public-users"),
+    path("api/public/users/<int:id>/", get_public_user_by_id, name="public-user-by-id"),
+    path("api/public/users/search/", search_public_users, name="public-user-search"),
+    # urls.py
+    path("api/news/", ResearchNewsAPIView.as_view()),
+    path("api/og-meta/", OpenGraphMetaAPIView.as_view(), name="og-meta"),
+    path("api/me", me),
+    path("api/qr/", generate_qr_from_url),
+    path(
+        "api/profile/scientific-interest/",
+        get_scientific_interest,
+        name="get-scientific-interest"
+    ),
+    path(
+        "api/profile/scientific-interest/update/",
+        update_scientific_interest,
+        name="update-scientific-interest"
+    ),
+
 ]

@@ -145,6 +145,7 @@ class ProfessionalDetail(models.Model):
     # ===== PROFESSIONAL CONTACT =====
     work_email = models.EmailField(blank=True, null=True)
     contact_number = models.CharField(max_length=20, blank=True, null=True)
+    emergency_contact_number = models.CharField(max_length=20, blank=True, null=True)
     website = models.URLField(blank=True, null=True)
     lab = models.CharField(max_length=255, blank=True, null=True)
     work_address = models.TextField(blank=True, null=True)
@@ -200,13 +201,70 @@ class PastExperience(models.Model):
 
 
 
+
+
+class ScientificInterest(models.Model):
+    """
+    Scientific / Research interests of the user
+    """
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="scientific_interest"
+    )
+
+    # 1️⃣ Research Area of Expertise (single)
+    research_area_of_expertise = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True
+    )
+
+    # 2️⃣ Major Focus (multi-select)
+    major_focus = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="List of major research focus areas"
+    )
+
+    # 3️⃣ Specific Research Areas (multi-select)
+    specific_research_areas = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="List of specific research areas"
+    )
+
+    # 4️⃣ Organ Sites (multi-select)
+    organ_sites = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="List of organ sites"
+    )
+
+    # 5️⃣ Additional Research Areas (multi-select)
+    additional_research_areas = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Additional research expertise areas"
+    )
+
+    brief_description = models.CharField(max_length=255, blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Scientific Interest - {self.user.email}"
+
+
+
 class Event(models.Model):
     name = models.CharField(max_length=255)
 
     def __str__(self):
         return f"{self.id} - {self.name}"
-
-
+    
 
 
 
@@ -259,6 +317,7 @@ class Post(models.Model):
     title = models.CharField(max_length=255, blank=True)  # ✅ new field
     content = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    link_preview = models.JSONField(null=True, blank=True)
 
     def __str__(self):
         return f"Post by {self.user.email} on {self.created_at:%Y-%m-%d}"

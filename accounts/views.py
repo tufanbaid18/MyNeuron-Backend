@@ -46,10 +46,10 @@ from .models import Folder, FolderItem
 from .serializers import FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer
 from django.core.mail import send_mail
 from .serializers import UserMiniSerializer
-from .serializers import CalendarEventSerializer
+from .serializers import CalendarEventSerializer, ScientificInterestSerializer
 from .models import CalendarEvent
-from .models import PersonalDetail, ProfessionalDetail, Education, PastExperience
-from .serializers import PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer
+from .models import PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest
+from .serializers import PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer
 
 
 # Web registration
@@ -148,8 +148,32 @@ def api_login(request):
             'last_name': user.last_name,
             'profile_image': user.profile_image.url if user.profile_image else None,
             'role': user.role,     # <-- Important line
+            'status' : user.is_staff,
+            'is_verified': user.is_verified,
         }
     })
+
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {"request": self.request}
+    
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me(request):
+    serializer = UserSerializer(
+        request.user,
+        context={"request": request}
+    )
+    return Response(serializer.data)
+
 
 
 @api_view(['POST'])
@@ -326,15 +350,6 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
 
 
-class UserViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_serializer_context(self):
-        return {"request": self.request}
-
-
 
 
 # ================================
@@ -496,6 +511,44 @@ def delete_past_experience(request, pk):
 
 
 
+
+# ================================
+# 🔬 SCIENTIFIC INTEREST VIEWS
+# ================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_scientific_interest(request):
+    """Fetch logged-in user's scientific interests"""
+    scientific_interest, _ = ScientificInterest.objects.get_or_create(
+        user=request.user
+    )
+    serializer = ScientificInterestSerializer(scientific_interest)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def update_scientific_interest(request):
+    """Update logged-in user's scientific interests"""
+    scientific_interest, _ = ScientificInterest.objects.get_or_create(
+        user=request.user
+    )
+    serializer = ScientificInterestSerializer(
+        scientific_interest,
+        data=request.data,
+        partial=True
+    )
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def add_comment(request, post_id):
@@ -513,6 +566,31 @@ def add_comment(request, post_id):
     return Response(serializer.data, status=201)
 
 
+def extract_youtube_id(url):
+    patterns = [
+        r"youtu\.be\/([^?&]+)",
+        r"youtube\.com\/watch\?v=([^?&]+)",
+        r"youtube\.com\/embed\/([^?&]+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def get_youtube_preview(url):
+    video_id = extract_youtube_id(url)
+    if not video_id:
+        return None
+
+    return {
+        "type": "youtube",
+        "video_id": video_id,
+        "thumbnail": f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+        "watch_url": f"https://www.youtube.com/watch?v={video_id}",
+        "embed_url": f"https://www.youtube.com/embed/{video_id}",
+    }
 
 
 
@@ -526,22 +604,25 @@ class PostViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def create(self, request, *args, **kwargs):
-        """
-        Create a new post with optional media files.
-        """
         title = request.data.get('title', '')
         content = request.data.get('content', '')
         files = request.FILES.getlist('files')
 
+        # 🔹 Detect YouTube link & build preview
+        youtube_preview = get_youtube_preview(content)
+
         with transaction.atomic():
-            # Create post
-            post = Post.objects.create(user=request.user, title=title, content=content)
+            post = Post.objects.create(
+                user=request.user,
+                title=title,
+                content=content,
+                link_preview=youtube_preview  # ✅ ADD THIS
+            )
 
             # Attach any uploaded media
             for file in files:
                 PostMedia.objects.create(post=post, file=file)
 
-        # Re-serialize with request context to get full URLs
         serializer = self.get_serializer(post, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -738,6 +819,74 @@ def get_speaker_by_id(request, id):
 
     serializer = UserSerializer(speaker, context={'request': request})
     return Response(serializer.data)
+
+
+
+# views.py
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_public_users(request):
+    users = User.objects.all().select_related(
+        "personal_detail",
+        "professional_detail"
+    ).prefetch_related(
+        "education",
+        "past_experiences"
+    )
+
+    serializer = PublicUserProfileSerializer(
+        users, many=True, context={"request": request}
+    )
+    return Response(serializer.data)
+
+
+# views.py
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def get_public_user_by_id(request, id):
+    try:
+        user = User.objects.select_related(
+            "personal_detail",
+            "professional_detail"
+        ).prefetch_related(
+            "education",
+            "past_experiences"
+        ).get(id=id)
+    except User.DoesNotExist:
+        return Response({"detail": "User not found"}, status=404)
+
+    serializer = PublicUserProfileSerializer(
+        user, context={"request": request}
+    )
+    return Response(serializer.data)
+
+
+from django.db.models import Q
+from rest_framework.permissions import AllowAny
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def search_public_users(request):
+    query = request.GET.get("q", "").strip()
+
+    if not query:
+        return Response([])
+
+    users = User.objects.filter(
+        Q(first_name__icontains=query) |
+        Q(last_name__icontains=query)
+    ).select_related(
+        "personal_detail",
+        "professional_detail"
+    )[:10]  # limit results
+
+    serializer = PublicUserProfileSerializer(
+        users, many=True, context={"request": request}
+    )
+    return Response(serializer.data)
+
+
 
 
 
@@ -1258,3 +1407,173 @@ class CalendarEventViewSet(ModelViewSet):
 
         
 
+import feedparser
+from rest_framework.response import Response
+from rest_framework.views import APIView
+import re
+from datetime import datetime
+
+
+
+class ResearchNewsAPIView(APIView):
+    def get(self, request):
+        feeds = [
+            "https://www.biopatrika.com/rss"
+        ]
+
+        news_items = []
+
+        for url in feeds:
+            feed = feedparser.parse(url)
+
+            source_name = feed.feed.get("title", "Unknown Source")
+
+            # ✅ ROOT / CHANNEL IMAGE (fallback thumbnail)
+            root_thumbnail = None
+            if "image" in feed.feed:
+                root_thumbnail = feed.feed.image.get("href")
+
+            for entry in feed.entries[:5]:
+                thumbnail = None
+
+                # 1️⃣ media_content (future-proof)
+                if hasattr(entry, "media_content"):
+                    thumbnail = entry.media_content[0].get("url")
+
+                # 2️⃣ enclosures
+                elif hasattr(entry, "enclosures") and entry.enclosures:
+                    thumbnail = entry.enclosures[0].get("href")
+
+                # 3️⃣ extract <img> from description/summary
+                elif hasattr(entry, "summary"):
+                    match = re.search(
+                        r'<img[^>]+src="([^">]+)"',
+                        entry.summary,
+                        re.IGNORECASE
+                    )
+                    if match:
+                        thumbnail = match.group(1)
+
+                # 4️⃣ FINAL FALLBACK → ROOT IMAGE ✅
+                if not thumbnail:
+                    thumbnail = root_thumbnail
+
+                # Published date
+                published = ""
+                if hasattr(entry, "published_parsed") and entry.published_parsed:
+                    published = datetime(
+                        *entry.published_parsed[:6]
+                    ).isoformat()
+
+                news_items.append({
+                    "title": entry.title,
+                    "link": entry.link,
+                    "published": published,
+                    "source": source_name,
+                    "thumbnail": thumbnail
+                })
+
+        # Sort newest first
+        news_items.sort(
+            key=lambda x: x["published"] or "",
+            reverse=True
+        )
+
+        return Response(news_items[:10])
+
+
+import requests
+from bs4 import BeautifulSoup
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+class OpenGraphMetaAPIView(APIView):
+    def post(self, request):
+        url = request.data.get("url")
+
+        if not url:
+            return Response(
+                {"error": "URL is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+
+            soup = BeautifulSoup(response.text, "html.parser")
+
+            og_data = {}
+
+            for tag in soup.find_all("meta"):
+                prop = tag.get("property") or tag.get("name")
+                if prop and prop.startswith("og:"):
+                    og_data[prop] = tag.get("content")
+
+            return Response({
+                "url": url,
+                "og": og_data
+            })
+
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+
+import json
+import qrcode
+import base64
+from io import BytesIO
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+
+
+@csrf_exempt
+@require_POST
+def generate_qr_from_url(request):
+    try:
+        data = json.loads(request.body)
+        url = data.get("url")
+
+        if not url:
+            return JsonResponse(
+                {"error": "URL is required"},
+                status=400
+            )
+
+        # Create QR
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_H,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(url)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        # Convert to Base64
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        qr_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        return JsonResponse({
+            "url": url,
+            "qr_base64": f"data:image/png;base64,{qr_base64}"
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"error": "Invalid JSON body"},
+            status=400
+        )
