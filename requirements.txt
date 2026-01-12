@@ -10,4 +10,4 @@ django-cors-headers
 python-decouple
 feedparser
 qrcode[pil]
-
+beautifulsoup4
