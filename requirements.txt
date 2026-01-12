@@ -8,3 +8,6 @@ python-dotenv
 firebase-admin
 django-cors-headers
 python-decouple
+feedparser
+qrcode[pil]
+
