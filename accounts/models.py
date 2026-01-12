@@ -16,7 +16,11 @@ class User(AbstractUser):
     last_name = models.CharField(max_length=150, blank=True)
     profile_image = models.ImageField(upload_to='profiles/', null=True, blank=True)
     profile_title = models.CharField(max_length=255, blank=True, null=True)
-
+    is_verified = models.BooleanField(
+        ("verified status"),
+        default=False,
+        help_text=("Designates whether the user has done payment or not."),
+    )
     
     ROLE_CHOICES = (
         ('user', 'User'),

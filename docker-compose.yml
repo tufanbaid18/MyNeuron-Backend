@@ -23,7 +23,7 @@ services:
       MYSQL_PASSWORD: 'Tufan@253385'
       MYSQL_ROOT_PASSWORD: 'Tufan@253385'
     volumes:
-      - /bencos/myneuron/db2:/var/lib/mysql
+      - /bencos/myneuron/mysql-data:/var/lib/mysql
     ports:
       - "3305:3306"
 
