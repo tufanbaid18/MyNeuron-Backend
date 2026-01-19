@@ -513,7 +513,14 @@ def resend_verification_email(request):
               Verify Email
             </a>
           </p>
+
+<p>If the button doesn’t work, copy this link:</p>
+      <p style="word-break:break-all;">
+        <a href="{verify_url}">{verify_url}</a>
+      </p>
+
           <p>This link will expire in <b>24 hours</b>.</p>
+          
           <p>– MyNeuron Team</p>
         </div>
       </body>
