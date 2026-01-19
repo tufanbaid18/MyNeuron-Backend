@@ -11,3 +11,4 @@ python-decouple
 feedparser
 qrcode[pil]
 beautifulsoup4
+djangorestframework-simplejwt
