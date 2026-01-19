@@ -2,7 +2,9 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from .managers import CustomUserManager
 from django.conf import settings
-
+import uuid
+from django.utils.timezone import now
+from datetime import timedelta
 
 
 class User(AbstractUser):
@@ -21,6 +23,7 @@ class User(AbstractUser):
         default=False,
         help_text=("Designates whether the user has done payment or not."),
     )
+    is_email_verified = models.BooleanField(default=False)
     
     ROLE_CHOICES = (
         ('user', 'User'),
@@ -38,6 +41,14 @@ class User(AbstractUser):
         return self.email
 
 
+
+class EmailVerificationToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    token = models.UUIDField(default=uuid.uuid4, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def is_expired(self):
+        return now() > self.created_at + timedelta(hours=24)
 
 
 class PersonalDetail(models.Model):

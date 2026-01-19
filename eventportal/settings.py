@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from decouple import config
+from datetime import timedelta
 
 import pymysql
 pymysql.install_as_MySQLdb()
@@ -22,7 +23,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'rest_framework.authtoken',
+    # 'rest_framework.authtoken',
     'accounts',
     'corsheaders',
 ]
@@ -117,16 +118,28 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "tufanbaid18@gmail.com"
 EMAIL_HOST_PASSWORD = "hlrv clts fscl crad"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+# FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = "68.178.168.255:9005"
 
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
-    ]
+    ),
 }
+
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+}
+
 
 # settings.py
 CORS_ALLOW_ALL_ORIGINS = True

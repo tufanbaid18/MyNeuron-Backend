@@ -2,7 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.authtoken.models import Token
+from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.shortcuts import render, redirect
 from django.contrib.auth.forms import AuthenticationForm
@@ -50,7 +50,8 @@ from .serializers import CalendarEventSerializer, ScientificInterestSerializer
 from .models import CalendarEvent
 from .models import PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest
 from .serializers import PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer
-
+from datetime import timedelta
+from rest_framework.exceptions import PermissionDenied
 
 # Web registration
 def register_view(request):
@@ -110,15 +111,283 @@ class MemberViewSet(viewsets.ModelViewSet):
     serializer_class = MemberSerializer
     permission_classes = [IsAuthenticated]
 
+from .models import EmailVerificationToken
+from django.conf import settings
+from django.core.mail import send_mail
+
+def get_tokens_for_user(user):
+    refresh = RefreshToken.for_user(user)
+    return {
+        'refresh': str(refresh),
+        'access': str(refresh.access_token),
+    }
+
+
+# @api_view(['POST'])
+# @permission_classes([AllowAny])
+# def api_register(request):
+#     serializer = UserSerializer(data=request.data)
+#     if serializer.is_valid():
+#         user = serializer.save()
+
+#         # 🔐 Create email verification token
+#         email_token = EmailVerificationToken.objects.create(user=user)
+
+#         verify_url = f"{settings.FRONTEND_URL}/verify-email?token={email_token.token}"
+
+#         html_message = f"""
+# <!DOCTYPE html>
+# <html>
+# <head>
+#   <meta charset="UTF-8" />
+#   <title>Verify Your Email</title>
+#   <style>
+#     body {{
+#       margin: 0;
+#       padding: 0;
+#       background-color: #f4f6f8;
+#       font-family: Arial, Helvetica, sans-serif;
+#     }}
+#     .container {{
+#       max-width: 600px;
+#       margin: 40px auto;
+#       background: #ffffff;
+#       border-radius: 8px;
+#       overflow: hidden;
+#       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+#     }}
+#     .header {{
+#       background: #1e88e5;
+#       color: #ffffff;
+#       padding: 20px;
+#       text-align: center;
+#     }}
+#     .content {{
+#       padding: 30px;
+#       color: #333333;
+#       line-height: 1.6;
+#     }}
+#     .button {{
+#       display: inline-block;
+#       margin: 30px 0;
+#       padding: 14px 28px;
+#       background: #1e88e5;
+#       color: #ffffff !important;
+#       text-decoration: none;
+#       border-radius: 6px;
+#       font-size: 16px;
+#       font-weight: bold;
+#     }}
+#     .footer {{
+#       background: #f0f2f5;
+#       text-align: center;
+#       padding: 15px;
+#       font-size: 12px;
+#       color: #777777;
+#     }}
+#   </style>
+# </head>
+# <body>
+#   <div class="container">
+#     <div class="header">
+#       <h1>Welcome to MyNeuron</h1>
+#     </div>
+
+#     <div class="content">
+#       <p>Hi <strong>{user.first_name}</strong>,</p>
+
+#       <p>
+#         Thank you for registering with <strong>MyNeuron</strong>.
+#         Please confirm your email address to activate your account.
+#       </p>
+
+#       <p style="text-align:center;">
+#         <a href="{verify_url}" class="button">Verify Email</a>
+#       </p>
+
+#       <p>
+#         If the button above does not work, copy and paste the following link into your browser:
+#       </p>
+
+#       <p style="word-break: break-all;">
+#         <a href="{verify_url}">{verify_url}</a>
+#       </p>
+
+#       <p>
+#         This verification link will expire in <strong>24 hours</strong>.
+#       </p>
+
+#       <p>
+#         If you did not create this account, you can safely ignore this email.
+#       </p>
+
+#       <p>
+#         Regards,<br />
+#         <strong>MyNeuron Team</strong>
+#       </p>
+#     </div>
+
+#     <div class="footer">
+#       © {now().year} MyNeuron. All rights reserved.
+#     </div>
+#   </div>
+# </body>
+# </html>
+# """
+
+#         # 📧 Send verification email
+#         send_mail(
+#             subject="Verify your email – MyNeuron",
+#             message=f"Verify your email: {verify_url}",  # fallback (plain text)
+#             from_email=settings.DEFAULT_FROM_EMAIL,
+#             recipient_list=[user.email],
+#             html_message=html_message,   # 👈 IMPORTANT
+#             fail_silently=False,
+#         )
+
+#         return Response(
+#             {
+#                 "message": "Registration successful. Please check your email to verify your account."
+#             },
+#             status=201
+#         )
+
+#     return Response(serializer.errors, status=400)
+
+def verification_email_html(user, verify_url):
+    return f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Verify Your Email</title>
+</head>
+<body style="background:#f4f6f8;font-family:Arial;padding:20px;">
+  <div style="max-width:600px;margin:auto;background:#fff;border-radius:8px;overflow:hidden;">
+    <div style="background:#1e88e5;color:#fff;padding:20px;text-align:center;">
+      <h1>Welcome to MyNeuron</h1>
+    </div>
+
+    <div style="padding:30px;color:#333;">
+      <p>Hi <strong>{user.first_name}</strong>,</p>
+
+      <p>Please confirm your email address to activate your account.</p>
+
+      <p style="text-align:center;">
+        <a href="{verify_url}"
+           style="background:#1e88e5;color:#fff;padding:14px 28px;
+                  text-decoration:none;border-radius:6px;font-weight:bold;">
+          Verify Email
+        </a>
+      </p>
+
+      <p>If the button doesn’t work, copy this link:</p>
+      <p style="word-break:break-all;">
+        <a href="{verify_url}">{verify_url}</a>
+      </p>
+
+      <p>This link expires in <strong>24 hours</strong>.</p>
+
+      <p>– MyNeuron Team</p>
+    </div>
+
+    <div style="background:#f0f2f5;text-align:center;padding:12px;font-size:12px;">
+      © {now().year} MyNeuron
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+
+
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def api_register(request):
+    email = request.data.get("email")
+
+     # ✅ ADD THIS BLOCK
+    if not email:
+        return Response(
+            {"email": ["Email is required"]},
+            status=400
+        )
+
+    # 🔍 Check if user already exists
+    existing_user = User.objects.filter(email=email).first()
+
+
+
+
+    if existing_user:
+        # 🟡 User exists but email NOT verified → resend email
+        if not existing_user.is_email_verified:
+            # ⏱ Rate limit
+            last_token = EmailVerificationToken.objects.filter(
+                user=existing_user,
+                created_at__gte=now() - timedelta(minutes=1)
+            ).first()
+
+            if last_token:
+                return Response(
+                    {"detail": "Please wait 1 minute before requesting another email."},
+                    status=429
+                )
+            EmailVerificationToken.objects.filter(user=existing_user).delete()
+
+            token = EmailVerificationToken.objects.create(user=existing_user)
+            verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token.token}"
+
+            send_mail(
+                subject="Verify your email – MyNeuron",
+                message=f"Verify your email: {verify_url}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[existing_user.email],
+                html_message=verification_email_html(existing_user, verify_url),
+            )
+
+            return Response(
+                {
+                    "detail": "Account already exists but is not verified. Verification email resent.",
+                    "resend": True,
+                },
+                status=200,
+            )
+
+        # 🔴 User exists AND verified → block
+        return Response(
+            {"email": ["User with this email already exists. Please log in."]},
+            status=400,
+        )
+
+    # 🆕 Fresh registration
     serializer = UserSerializer(data=request.data)
-    if serializer.is_valid():
-        user = serializer.save()
-        token, _ = Token.objects.get_or_create(user=user)
-        return Response({'token': token.key, 'user': UserSerializer(user).data}, status=201)
-    return Response(serializer.errors, status=400)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.save()
+
+    token = EmailVerificationToken.objects.create(user=user)
+    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token.token}"
+
+    send_mail(
+        subject="Verify your email – MyNeuron",
+        message=f"Verify your email: {verify_url}",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        html_message=verification_email_html(user, verify_url),
+    )
+
+    return Response(
+        {
+            "detail": "Registration successful. Verification email sent.",
+            "resend": False,
+        },
+        status=201,
+    )
+
+
+
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
@@ -137,21 +406,132 @@ def api_login(request):
     if not user.check_password(password):
         return Response({'detail': 'Invalid credentials'}, status=400)
 
-    token, _ = Token.objects.get_or_create(user=user)
+    # 🚫 BLOCK UNVERIFIED EMAILS
+    if not user.is_email_verified:
+        return Response(
+            {'detail': 'Please verify your email before logging in.'},
+            status=403
+        )
+    
+    tokens = get_tokens_for_user(user)
 
     return Response({
-        'token': token.key,
+        'access': tokens['access'],
+        'refresh': tokens['refresh'],
         'user': {
             'id': user.id,
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
             'profile_image': user.profile_image.url if user.profile_image else None,
-            'role': user.role,     # <-- Important line
-            'status' : user.is_staff,
+            'role': user.role,
             'is_verified': user.is_verified,
+            'is_email_verified': user.is_email_verified
         }
     })
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def verify_email(request):
+    token = request.data.get("token")
+
+    if not token:
+        return Response({"detail": "Token is required"}, status=400)
+
+    try:
+        record = EmailVerificationToken.objects.get(token=token)
+    except EmailVerificationToken.DoesNotExist:
+        return Response({"detail": "Invalid or expired token"}, status=400)
+
+    # ⏳ Check expiry AFTER fetching record
+    if record.is_expired():
+        record.delete()
+        return Response({"detail": "Token expired"}, status=400)
+
+    user = record.user
+    user.is_email_verified = True
+    user.save()
+
+    record.delete()  # one-time use
+
+    return Response(
+        {"message": "Email verified successfully. You can now log in."},
+        status=200
+    )
+
+
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from django.conf import settings
+from django.core.mail import send_mail
+from django.utils.timezone import now
+
+from .models import User, EmailVerificationToken
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def resend_verification_email(request):
+    email = request.data.get("email")
+
+    if not email:
+        return Response({"detail": "Email is required"}, status=400)
+
+    try:
+        user = User.objects.get(email=email)
+    except User.DoesNotExist:
+        return Response({"detail": "User not found"}, status=404)
+
+    if user.is_email_verified:
+        return Response(
+            {"detail": "Email is already verified"},
+            status=400
+        )
+
+    # 🔥 Delete old tokens
+    EmailVerificationToken.objects.filter(user=user).delete()
+
+    # 🔐 Create new token
+    token = EmailVerificationToken.objects.create(user=user)
+
+    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token.token}"
+
+    html_message = f"""
+    <html>
+      <body style="font-family: Arial; background:#f4f6f8; padding:20px;">
+        <div style="max-width:600px; margin:auto; background:#fff; padding:30px; border-radius:8px;">
+          <h2 style="color:#1e88e5;">Verify your email</h2>
+          <p>Hi {user.first_name},</p>
+          <p>Please click the button below to verify your email:</p>
+          <p style="text-align:center;">
+            <a href="{verify_url}"
+               style="background:#1e88e5;color:#fff;padding:12px 24px;
+                      text-decoration:none;border-radius:6px;">
+              Verify Email
+            </a>
+          </p>
+          <p>This link will expire in <b>24 hours</b>.</p>
+          <p>– MyNeuron Team</p>
+        </div>
+      </body>
+    </html>
+    """
+
+    send_mail(
+        subject="Verify your email – MyNeuron",
+        message=f"Verify your email: {verify_url}",
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        html_message=html_message,
+    )
+
+    return Response(
+        {"message": "Verification email sent successfully"},
+        status=200
+    )
 
 
 
@@ -642,67 +1022,114 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(post, context={'request': request})
         return Response(serializer.data)
     
+    def _check_owner(self, request, post):
+        if post.user != request.user:
+            raise PermissionDenied("You do not have permission to modify this post.")
+        
+    def update(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
+
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
+
+        return super().destroy(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
+
+        title = request.data.get('title', post.title)
+        content = request.data.get('content', post.content)
+        files = request.FILES.getlist('files')
+
+        post.title = title
+        post.content = content
+        post.link_preview = get_youtube_preview(content)
+        post.save()
+
+        if files:
+            post.media.all().delete()
+            for file in files:
+                PostMedia.objects.create(post=post, file=file)
+
+        serializer = self.get_serializer(post, context={'request': request})
+        return Response(serializer.data)
 
 
-    # Like a post
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def like(self, request, pk=None):
         post = self.get_object()
-        like, created = Like.objects.get_or_create(user=request.user, post=post)
-        if not created:
+
+        like, created = Like.objects.get_or_create(
+            user=request.user,
+            post=post
+        )
+
+        if created:
+            is_liked = True
+
+            # 🔔 Notify post owner
+            if post.user != request.user:
+                notification = Notification.objects.create(
+                    user=post.user,
+                    actor=request.user,
+                    action="liked your post",
+                    post=post,
+                )
+
+                from accounts.firebase_utils import push_notification_to_firebase
+                push_notification_to_firebase(
+                    user_id=post.user.id,
+                    data={
+                        "action": "liked your post",
+                        "actor": request.user.id,
+                        "post": post.id,
+                        "created_at": str(notification.created_at),
+                        "is_read": False
+                    }
+                )
+        else:
             like.delete()
-            return Response({"message": "Unliked"}, status=status.HTTP_200_OK)
+            is_liked = False
 
-        if post.user != request.user:  # avoid notifying yourself
-            Notification.objects.create(
-                user=post.user,                 # who receives the notification
-                actor=request.user,             # who performed action
-                action="liked your post",
-                post=post,
-            )
-            from accounts.firebase_utils import push_notification_to_firebase
+        return Response(
+            {
+                "id": post.id,
+                "is_liked": is_liked,
+                "like_count": post.likes.count()
+            },
+            status=status.HTTP_200_OK
+        )
 
-            push_notification_to_firebase(
-                user_id=post.user.id,
-                data={
-                    "action": "liked your post",
-                    "actor": request.user.id,
-                    "post": post.id,
-                    "created_at": str(notification.created_at),
-                    "is_read": False
-                }
-            )
-        return Response({"message": "Liked"}, status=status.HTTP_201_CREATED)
-
-    # Bookmark a post
-    @action(detail=True, methods=["post"])
-    def bookmark(self, request, pk=None):
-        post = self.get_object()
-        bookmark, created = Bookmark.objects.get_or_create(user=request.user, post=post)
-        if not created:
-            bookmark.delete()
-            return Response({"message": "Removed bookmark"}, status=status.HTTP_200_OK)
-        return Response({"message": "Bookmarked"}, status=status.HTTP_201_CREATED)
 
     # Add comment
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def comment(self, request, pk=None):
         post = self.get_object()
-        c_content = request.data.get('c_content')  # ✅ FIXED
+        c_content = request.data.get('c_content')
 
         if not c_content:
             return Response({'error': 'Comment cannot be empty'}, status=400)
 
-        comment = Comment.objects.create(user=request.user, post=post, c_content=c_content)
-        if post.user != request.user:  # Don’t notify if user comments on own post
-            Notification.objects.create(
-                user=post.user,                 # who receives the notification
-                actor=request.user,             # who performed action
+        comment = Comment.objects.create(
+            user=request.user,
+            post=post,
+            c_content=c_content
+        )
+
+        if post.user != request.user:
+            notification = Notification.objects.create(
+                user=post.user,
+                actor=request.user,
                 action="commented on your post",
                 post=post,
             )
-            from accounts.firebase_utils import push_notification_to_firebase
 
+            from accounts.firebase_utils import push_notification_to_firebase
             push_notification_to_firebase(
                 user_id=post.user.id,
                 data={
@@ -713,8 +1140,10 @@ class PostViewSet(viewsets.ModelViewSet):
                     "is_read": False
                 }
             )
+
         serializer = CommentSerializer(comment)
-        return Response(serializer.data, status=201)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
     @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
     def my_latest(self, request):
@@ -725,23 +1154,30 @@ class PostViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(posts, many=True, context={'request': request})
         return Response(serializer.data)
     
-    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
-    def my_bookmarks(self, request):
-        bookmarks = (
-            Bookmark.objects
-            .filter(user=request.user)
-            .select_related("post", "post__user")
-            .prefetch_related("post__media", "post__comments")
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def bookmark(self, request, pk=None):
+        post = self.get_object()
+
+        bookmark, created = Bookmark.objects.get_or_create(
+            user=request.user,
+            post=post
         )
 
-        posts = [b.post for b in bookmarks]
+        if created:
+            is_bookmarked = True
+        else:
+            bookmark.delete()
+            is_bookmarked = False
 
-        serializer = PostSerializer(
-            posts,
-            many=True,
-            context={"request": request}
+        return Response(
+            {
+                "id": post.id,
+                "is_bookmarked": is_bookmarked,
+                "bookmark_count": post.bookmarks.count()
+            },
+            status=status.HTTP_200_OK
         )
-        return Response(serializer.data)
+
     
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
@@ -796,6 +1232,7 @@ class PostViewSet(viewsets.ModelViewSet):
             {"message": "Post shared successfully"},
             status=status.HTTP_201_CREATED
         )
+
 
 
 

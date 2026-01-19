@@ -7,10 +7,13 @@ from .views import (
     update_professional_detail, add_comment, get_education_details, add_education_detail,
     update_education_detail, delete_education_detail, get_speakers, get_speaker_by_id, get_past_experiences, add_past_experience,
     update_past_experience, delete_past_experience, get_public_users, get_public_user_by_id, search_public_users, me, generate_qr_from_url,
-    get_scientific_interest, update_scientific_interest,
+    get_scientific_interest, update_scientific_interest, verify_email, resend_verification_email,
     UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView,
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet
+)
+from rest_framework_simplejwt.views import (
+    TokenRefreshView,
 )
 
 
@@ -39,6 +42,8 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/register/', api_register),
     path('api/login/', api_login),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path("api/verify-email/", verify_email),
     path('api/event-register/', api_event_register),
     path('api/upload-profile-image/', upload_profile_image),
     path('api/profile/personal/', get_personal_detail),
@@ -78,5 +83,7 @@ urlpatterns = [
         update_scientific_interest,
         name="update-scientific-interest"
     ),
+    path("api/resend-verification/", resend_verification_email, name="resend-verification"),
+
 
 ]

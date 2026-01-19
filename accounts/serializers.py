@@ -63,14 +63,29 @@ class UserSerializer(serializers.ModelSerializer):
         validate_password_complexity(data["password"])
         return data
 
+    # def create(self, validated_data):
+    #     validated_data.pop("confirm_password")
+    #     password = validated_data.pop("password")
+    #     user = User(**validated_data)
+    #     user.set_password(password)
+    #     user.save()
+    #     return user
     def create(self, validated_data):
         validated_data.pop("confirm_password")
         password = validated_data.pop("password")
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
-        return user
 
+        user = User.objects.create_user(
+            email=validated_data["email"],
+            password=password,
+            first_name=validated_data.get("first_name"),
+            middle_name=validated_data.get("middle_name"),
+            last_name=validated_data.get("last_name"),
+            is_email_verified=False,  # 🔒 FORCE FALSE
+            is_verified=False,        # 🔒 PAYMENT VERIFICATION
+            role="user",              # 🔒 DEFAULT ROLE
+        )
+
+        return user
     
     def get_profile_image(self, obj):
         request = self.context.get("request")
@@ -314,6 +329,9 @@ class PostSerializer(serializers.ModelSerializer):
     bookmark_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
 
+    is_liked = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
+
     comments = CommentSerializer(many=True, read_only=True)
     link_preview = serializers.JSONField(read_only=True)
 
@@ -330,6 +348,8 @@ class PostSerializer(serializers.ModelSerializer):
             "like_count",
             "bookmark_count",
             "comment_count",
+            "is_liked",
+            "is_bookmarked",
             "comments",
         ]
 
@@ -345,6 +365,23 @@ class PostSerializer(serializers.ModelSerializer):
     def get_comment_count(self, obj):
         return obj.comments.count()
 
+    # -----------------------
+    # USER STATE
+    # -----------------------
+    def get_is_liked(self, obj):
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return False
+        return obj.likes.filter(user=request.user).exists()
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return False
+        return obj.bookmarks.filter(user=request.user).exists()
+
+
+    
     
 from .models import HandshakeRequest
 
