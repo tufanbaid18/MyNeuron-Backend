@@ -42,6 +42,9 @@ class User(AbstractUser):
 
 
 
+
+
+
 class EmailVerificationToken(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     token = models.UUIDField(default=uuid.uuid4, unique=True)
@@ -51,41 +54,79 @@ class EmailVerificationToken(models.Model):
         return now() > self.created_at + timedelta(hours=24)
 
 
+
+
+
+from django.conf import settings
+from django.db import models
+from django.utils import timezone
+
+
+class FollowRequest(models.Model):
+    follower = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="following_relations",
+        on_delete=models.CASCADE
+    )
+    following = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        related_name="follower_relations",
+        on_delete=models.CASCADE
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("pending", "Pending"),
+            ("accepted", "Accepted"),
+            ("rejected", "Rejected"),
+        ],
+        default="pending"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    responded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("follower", "following")
+        indexes = [
+            models.Index(fields=["follower", "following"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def accept(self):
+        self.status = "accepted"
+        self.responded_at = timezone.now()
+        self.save()
+
+    def reject(self):
+        self.status = "rejected"
+        self.responded_at = timezone.now()
+        self.save()
+
+    def __str__(self):
+        return f"{self.follower} → {self.following} ({self.status})"
+
+
+
+
+
+
 class PersonalDetail(models.Model):
-    """
-    Extended personal & research profile
-    """
-
     user = models.OneToOneField( settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="personal_detail" )
-
-    # Bio
     biosketch = models.TextField( blank=True, null=True)
-
-    # Research / Academic links (multiple allowed via JSON)
     research_links = models.JSONField(blank=True, null=True, help_text="List of links like ResearchGate, PubMed, Google Scholar, NCBI" )
-
-    # Social
     x_handle = models.CharField(max_length=255, blank=True, null=True, help_text="Twitter/X username without URL")
-
     linkedin = models.URLField( blank=True, null=True)
-    # Location & demographics
     city = models.CharField( max_length=255, blank=True, null=True)
-
     country = models.CharField( max_length=100, blank=True, null=True)
-
-
     gender = models.CharField(
         max_length=20,
         blank=True,
         null=True
     )
-
     dob = models.DateField( blank=True, null=True)
-
-
-    # Publications
     articles_journals = models.TextField( blank=True, null=True)
-
     book_chapters = models.TextField( blank=True, null=True)
 
     def __str__(self):
@@ -274,12 +315,21 @@ class ScientificInterest(models.Model):
 
 
 
+
+
+
+
+
 class Event(models.Model):
     name = models.CharField(max_length=255)
 
     def __str__(self):
         return f"{self.id} - {self.name}"
     
+
+
+
+
 
 
 
@@ -303,6 +353,9 @@ class Member(models.Model):
 
 
 
+
+
+
 class Program(models.Model):
     event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="programs")
     speaker = models.ForeignKey(
@@ -319,6 +372,9 @@ class Program(models.Model):
 
     def __str__(self):
         return f"Program {self.id} - {self.topic} ({self.event.name})"
+
+
+
 
 
 
@@ -352,6 +408,9 @@ class Post(models.Model):
 
 
 
+
+
+
 class PostMedia(models.Model):
     post = models.ForeignKey(
         Post,
@@ -376,6 +435,9 @@ class PostMedia(models.Model):
 
 
 
+
+
+
 class Like(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="likes")
@@ -383,6 +445,8 @@ class Like(models.Model):
 
     class Meta:
         unique_together = ("user", "post")  # prevents multiple likes
+
+
 
 
 
@@ -400,6 +464,8 @@ class Bookmark(models.Model):
 
 
 
+
+
 class Comment(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="comments")
@@ -409,6 +475,8 @@ class Comment(models.Model):
     
     def __str__(self):
         return f"Comment by {self.user.email} on {self.post.title}"
+
+
 
 
 
@@ -446,7 +514,15 @@ class HandshakeRequest(models.Model):
 
 
 
+
+
+
+
+from django.conf import settings
 from firebase_admin import db
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Notification(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, related_name="notifications", on_delete=models.CASCADE)
@@ -459,26 +535,33 @@ class Notification(models.Model):
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.actor} {self.action}"
-
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
 
-        # Push to Firebase realtime database
-        ref = db.reference(f"notifications/{self.user.id}")
-        ref.push({
-            "id": self.id,
-            "actor_id": self.actor.id,
-            "actor_name": self.actor.first_name,
-            "action": self.action,
-            "post": self.post.id if self.post else None,
-            "handshake": self.handshake.id if self.handshake else None,
-            "is_read": self.is_read,
-            "created_at": self.created_at.isoformat(),
-        })
+        # 🔒 Disable Firebase in dev / if not configured
+        if not getattr(settings, "ENABLE_FIREBASE", False):
+            return
 
-    
+        try:
+            ref = db.reference(f"notifications/{self.user.id}")
+            ref.push({
+                "id": self.id,
+                "actor_id": self.actor.id,
+                "actor_name": self.actor.first_name,
+                "action": self.action,
+                "post": self.post.id if self.post else None,
+                "handshake": self.handshake.id if self.handshake else None,
+                "is_read": self.is_read,
+                "created_at": self.created_at.isoformat(),
+            })
+        except Exception as e:
+            # ❗ Never crash the API
+            logger.error("Firebase notification failed: %s", e)
+
+
+
+
+
 
 
 
@@ -514,6 +597,10 @@ class Message(models.Model):
         if self.post:
             return f"{self.sender} → {self.receiver}: shared a post"
         return f"{self.sender} → {self.receiver}: {self.content[:20]}"
+
+
+
+
 
 
 

@@ -1,100 +1,73 @@
-from rest_framework import viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework import viewsets, permissions, status, filters
+from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.contrib.auth import authenticate
+from django.contrib.auth import logout
 from django.shortcuts import render, redirect
-from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .serializers import UserSerializer, EventSerializer, MemberSerializer
-from .models import Event, Member, User
+from .serializers import FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer 
+from .models import FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken
 from .forms import RegisterForm
 from django.http import JsonResponse
-from django.contrib.auth import logout
-from django.http import HttpResponse;
-from rest_framework.response import Response
-from rest_framework import status
-from .models import PersonalDetail, ProfessionalDetail
-from .serializers import UserProfileSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer
 from django.core.files.base import ContentFile
 import base64, uuid
-from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
-from .models import Post, PostMedia
-from .serializers import PostSerializer
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
-from .models import Like, Bookmark, Comment, Education
-from .serializers import CommentSerializer, EducationSerializer
-from rest_framework.decorators import action
-from rest_framework.parsers import JSONParser
-from .models import HandshakeRequest
-from .serializers import HandshakeSerializer
 from django.utils.timezone import now
-from .models import Notification
-from .serializers import NotificationSerializer
-from rest_framework import filters
-from .models import Program
-from .serializers import ProgramSerializer
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from django.db.models import Q
-from .models import Message
-from .serializers import MessageSerializer
-from .models import Folder, FolderItem
-from .serializers import FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer
 from django.core.mail import send_mail
-from .serializers import UserMiniSerializer
-from .serializers import CalendarEventSerializer, ScientificInterestSerializer
-from .models import CalendarEvent
-from .models import PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest
-from .serializers import PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer
 from datetime import timedelta
-from rest_framework.exceptions import PermissionDenied
+from django.conf import settings
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 
-# Web registration
-def register_view(request):
-    if request.method == 'POST':
-        form = RegisterForm(request.POST, request.FILES)
-        if form.is_valid():
-            form.save()
-            messages.success(request, 'Registration successful! Please log in.')
-            return redirect('login')
-    else:
-        form = RegisterForm()
-    return render(request, 'accounts/register.html', {'form': form})
 
-# Home page
-@login_required
-def home(request):
-    return render(request, 'accounts/home.html', {'user': request.user})
+# # Web registration
+# def register_view(request):
+#     if request.method == 'POST':
+#         form = RegisterForm(request.POST, request.FILES)
+#         if form.is_valid():
+#             form.save()
+#             messages.success(request, 'Registration successful! Please log in.')
+#             return redirect('login')
+#     else:
+#         form = RegisterForm()
+#     return render(request, 'accounts/register.html', {'form': form})
 
-# Event registration (web)
-@login_required
-def event_register_view(request):
+# # Home page
+# @login_required
+# def home(request):
+#     return render(request, 'accounts/home.html', {'user': request.user})
 
-    events = Event.objects.all()
-    if request.method == 'POST':
-        event_id = request.POST.get('event')
-        role = request.POST.get('role')
-        try:
-            event = Event.objects.get(id=event_id)
-        except Event.DoesNotExist:
-            messages.error(request, 'Selected event does not exist')
-            return redirect('accounts:event_register')
-        # prevent duplicates
-        if Member.objects.filter(user=request.user, event=event, role=role).exists():
-            messages.warning(request, 'You are already registered for this event with the same role')
-        else:
-            Member.objects.create(user=request.user, event=event, role=role)
-            messages.success(request, 'Successfully registered for the event')
-        return redirect('accounts:home')
-    return render(request, 'accounts/event_register.html', {'events': events})
+# # Event registration (web)
+# @login_required
+# def event_register_view(request):
 
-def logout_view(request):
-    logout(request)
-    return redirect('registration:login')
+#     events = Event.objects.all()
+#     if request.method == 'POST':
+#         event_id = request.POST.get('event')
+#         role = request.POST.get('role')
+#         try:
+#             event = Event.objects.get(id=event_id)
+#         except Event.DoesNotExist:
+#             messages.error(request, 'Selected event does not exist')
+#             return redirect('accounts:event_register')
+#         # prevent duplicates
+#         if Member.objects.filter(user=request.user, event=event, role=role).exists():
+#             messages.warning(request, 'You are already registered for this event with the same role')
+#         else:
+#             Member.objects.create(user=request.user, event=event, role=role)
+#             messages.success(request, 'Successfully registered for the event')
+#         return redirect('accounts:home')
+#     return render(request, 'accounts/event_register.html', {'events': events})
+
+# def logout_view(request):
+#     logout(request)
+#     return redirect('registration:login')
 
 
 # API views and viewsets
@@ -106,14 +79,14 @@ class EventViewSet(viewsets.ModelViewSet):
 
 
 
+
 class MemberViewSet(viewsets.ModelViewSet):
     queryset = Member.objects.select_related('user','event').all()
     serializer_class = MemberSerializer
     permission_classes = [IsAuthenticated]
 
-from .models import EmailVerificationToken
-from django.conf import settings
-from django.core.mail import send_mail
+
+
 
 def get_tokens_for_user(user):
     refresh = RefreshToken.for_user(user)
@@ -981,267 +954,6 @@ def get_youtube_preview(url):
 
 
 
-# --------------------------------------------------------
-# 🔹 POST VIEWSET (supports text + media upload)
-# --------------------------------------------------------
-class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.all().order_by('-created_at')
-    serializer_class = PostSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-
-    def create(self, request, *args, **kwargs):
-        title = request.data.get('title', '')
-        content = request.data.get('content', '')
-        files = request.FILES.getlist('files')
-
-        # 🔹 Detect YouTube link & build preview
-        youtube_preview = get_youtube_preview(content)
-
-        with transaction.atomic():
-            post = Post.objects.create(
-                user=request.user,
-                title=title,
-                content=content,
-                link_preview=youtube_preview  # ✅ ADD THIS
-            )
-
-            # Attach any uploaded media
-            for file in files:
-                PostMedia.objects.create(post=post, file=file)
-
-        serializer = self.get_serializer(post, context={'request': request})
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    def list(self, request, *args, **kwargs):
-        """
-        Return all posts (newest first) with full media URLs.
-        """
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True, context={'request': request})
-        return Response(serializer.data)
-
-    def retrieve(self, request, *args, **kwargs):
-        """
-        Get single post with media.
-        """
-        post = self.get_object()
-        serializer = self.get_serializer(post, context={'request': request})
-        return Response(serializer.data)
-    
-    def _check_owner(self, request, post):
-        if post.user != request.user:
-            raise PermissionDenied("You do not have permission to modify this post.")
-        
-    def update(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
-
-        return super().update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
-
-        return super().destroy(request, *args, **kwargs)
-
-    def partial_update(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
-
-        title = request.data.get('title', post.title)
-        content = request.data.get('content', post.content)
-        files = request.FILES.getlist('files')
-
-        post.title = title
-        post.content = content
-        post.link_preview = get_youtube_preview(content)
-        post.save()
-
-        if files:
-            post.media.all().delete()
-            for file in files:
-                PostMedia.objects.create(post=post, file=file)
-
-        serializer = self.get_serializer(post, context={'request': request})
-        return Response(serializer.data)
-
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def like(self, request, pk=None):
-        post = self.get_object()
-
-        like, created = Like.objects.get_or_create(
-            user=request.user,
-            post=post
-        )
-
-        if created:
-            is_liked = True
-
-            # 🔔 Notify post owner
-            if post.user != request.user:
-                notification = Notification.objects.create(
-                    user=post.user,
-                    actor=request.user,
-                    action="liked your post",
-                    post=post,
-                )
-
-                from accounts.firebase_utils import push_notification_to_firebase
-                push_notification_to_firebase(
-                    user_id=post.user.id,
-                    data={
-                        "action": "liked your post",
-                        "actor": request.user.id,
-                        "post": post.id,
-                        "created_at": str(notification.created_at),
-                        "is_read": False
-                    }
-                )
-        else:
-            like.delete()
-            is_liked = False
-
-        return Response(
-            {
-                "id": post.id,
-                "is_liked": is_liked,
-                "like_count": post.likes.count()
-            },
-            status=status.HTTP_200_OK
-        )
-
-
-    # Add comment
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
-    def comment(self, request, pk=None):
-        post = self.get_object()
-        c_content = request.data.get('c_content')
-
-        if not c_content:
-            return Response({'error': 'Comment cannot be empty'}, status=400)
-
-        comment = Comment.objects.create(
-            user=request.user,
-            post=post,
-            c_content=c_content
-        )
-
-        if post.user != request.user:
-            notification = Notification.objects.create(
-                user=post.user,
-                actor=request.user,
-                action="commented on your post",
-                post=post,
-            )
-
-            from accounts.firebase_utils import push_notification_to_firebase
-            push_notification_to_firebase(
-                user_id=post.user.id,
-                data={
-                    "action": "commented on your post",
-                    "actor": request.user.id,
-                    "post": post.id,
-                    "created_at": str(notification.created_at),
-                    "is_read": False
-                }
-            )
-
-        serializer = CommentSerializer(comment)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-
-    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
-    def my_latest(self, request):
-        """
-        Return posts by logged-in user.
-        """
-        posts = Post.objects.filter(user=request.user).order_by('-created_at')
-        serializer = self.get_serializer(posts, many=True, context={'request': request})
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def bookmark(self, request, pk=None):
-        post = self.get_object()
-
-        bookmark, created = Bookmark.objects.get_or_create(
-            user=request.user,
-            post=post
-        )
-
-        if created:
-            is_bookmarked = True
-        else:
-            bookmark.delete()
-            is_bookmarked = False
-
-        return Response(
-            {
-                "id": post.id,
-                "is_bookmarked": is_bookmarked,
-                "bookmark_count": post.bookmarks.count()
-            },
-            status=status.HTTP_200_OK
-        )
-
-    
-
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def share(self, request, pk=None):
-        post = self.get_object()
-        receiver_id = request.data.get("receiver")
-
-        if not receiver_id:
-            return Response(
-                {"error": "Receiver is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            receiver = User.objects.get(id=receiver_id)
-        except User.DoesNotExist:
-            return Response(
-                {"error": "Receiver not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        # ✅ Use existing Message model
-        message = Message.objects.create(
-            sender=request.user,
-            receiver=receiver,
-            post=post,
-            content="Shared a post"
-        )
-
-        # Notification
-        if receiver != request.user:
-            notification = Notification.objects.create(
-                user=receiver,
-                actor=request.user,
-                action="shared a post with you",
-                post=post
-            )
-
-            from accounts.firebase_utils import push_notification_to_firebase
-            push_notification_to_firebase(
-                user_id=receiver.id,
-                data={
-                    "action": "shared a post with you",
-                    "actor": request.user.id,
-                    "post": post.id,
-                    "created_at": str(notification.created_at),
-                    "is_read": False
-                }
-            )
-
-        return Response(
-            {"message": "Post shared successfully"},
-            status=status.HTTP_201_CREATED
-        )
-
-
-
 
 
 
@@ -2021,3 +1733,493 @@ def generate_qr_from_url(request):
             {"error": "Invalid JSON body"},
             status=400
         )
+
+
+
+class FollowRequestViewSet(viewsets.ModelViewSet):
+    serializer_class = FollowRequestSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return FollowRequest.objects.filter(
+            Q(follower=user) | Q(following=user)
+        ).select_related("follower", "following")
+
+    # -----------------------
+    # FOLLOW (send request)
+    # -----------------------
+    def create(self, request, *args, **kwargs):
+        following_id = request.data.get("following")
+
+        if not following_id:
+            return Response(
+                {"detail": "following field is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if str(request.user.id) == str(following_id):
+            return Response(
+                {"detail": "You cannot follow yourself"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        following_user = get_object_or_404(User, id=following_id)
+
+        fr, created = FollowRequest.objects.get_or_create(
+            follower=request.user,
+            following=following_user
+        )
+
+        if not created:
+            if fr.status == "accepted":
+                return Response({"detail": "Already following"}, status=400)
+            if fr.status == "pending":
+                return Response({"detail": "Follow request already sent"}, status=400)
+            if fr.status == "rejected":
+                fr.status = "pending"
+                fr.save()
+
+        serializer = self.get_serializer(fr)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+    # -----------------------
+    # ACCEPT
+    # -----------------------
+    @action(detail=True, methods=["post"])
+    def accept(self, request, pk=None):
+        fr = get_object_or_404(
+            FollowRequest,
+            id=pk,
+            following=request.user,
+            status="pending"
+        )
+        fr.status = "accepted"
+        fr.responded_at = timezone.now()
+        fr.save()
+
+        return Response({"detail": "Follow request accepted"})
+
+    # -----------------------
+    # REJECT
+    # -----------------------
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        fr = get_object_or_404(
+            FollowRequest,
+            id=pk,
+            following=request.user,
+            status="pending"
+        )
+        fr.status = "rejected"
+        fr.responded_at = timezone.now()
+        fr.save()
+
+        return Response({"detail": "Follow request rejected"})
+
+        # -----------------------
+    # UNFOLLOW
+    # -----------------------
+    @action(detail=False, methods=["post"])
+    def unfollow(self, request):
+        following_id = request.data.get("following")
+
+        if not following_id:
+            return Response(
+                {"detail": "following field is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        fr = get_object_or_404(
+            FollowRequest,
+            follower=request.user,
+            following_id=following_id,
+            status="accepted"
+        )
+        fr.delete()
+
+        return Response({"detail": "Unfollowed successfully"})
+    
+    # -----------------------
+    # REMOVE FOLLOWER
+    # -----------------------
+    @action(detail=False, methods=["post"])
+    def remove_follower(self, request):
+        follower_id = request.data.get("follower")
+
+        if not follower_id:
+            return Response(
+                {"detail": "follower field is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        fr = get_object_or_404(
+            FollowRequest,
+            follower_id=follower_id,
+            following=request.user,
+            status="accepted"
+        )
+
+        fr.delete()
+
+        return Response(
+            {"detail": "Follower removed successfully"},
+            status=status.HTTP_200_OK
+        )
+
+    
+        # -----------------------
+    # INCOMING REQUESTS
+    # -----------------------
+    @action(detail=False, methods=["get"])
+    def incoming(self, request):
+        qs = FollowRequest.objects.filter(
+            following=request.user,
+            status="pending"
+        ).select_related("follower")
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    # -----------------------
+    # OUTGOING REQUESTS
+    # -----------------------
+    @action(detail=False, methods=["get"])
+    def outgoing(self, request):
+        qs = FollowRequest.objects.filter(
+            follower=request.user,
+            status="pending"
+        ).select_related("following")
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+
+
+class UserFollowViewSet(ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    # -----------------------
+    # FOLLOWERS
+    # -----------------------
+    @action(detail=True, methods=["get"])
+    def followers(self, request, pk=None):
+        qs = FollowRequest.objects.filter(
+            following_id=pk,
+            status="accepted"
+        ).select_related("follower")
+
+        users = [f.follower for f in qs]
+        serializer = FollowUserListSerializer(
+            users,
+            many=True,
+            context={"request": request}
+        )
+        return Response(serializer.data)
+
+    # -----------------------
+    # FOLLOWING
+    # -----------------------
+    @action(detail=True, methods=["get"])
+    def following(self, request, pk=None):
+        qs = FollowRequest.objects.filter(
+            follower_id=pk,
+            status="accepted"
+        ).select_related("following")
+
+        users = [f.following for f in qs]
+        serializer = FollowUserListSerializer(
+            users,
+            many=True,
+            context={"request": request}
+        )
+        return Response(serializer.data)
+
+
+
+
+
+# --------------------------------------------------------
+# 🔹 POST VIEWSET (supports text + media upload)
+# --------------------------------------------------------
+class PostViewSet(viewsets.ModelViewSet):
+    queryset = Post.objects.all().order_by('-created_at')
+    serializer_class = PostSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def create(self, request, *args, **kwargs):
+        title = request.data.get('title', '')
+        content = request.data.get('content', '')
+        files = request.FILES.getlist('files')
+
+        # 🔹 Detect YouTube link & build preview
+        youtube_preview = get_youtube_preview(content)
+
+        with transaction.atomic():
+            post = Post.objects.create(
+                user=request.user,
+                title=title,
+                content=content,
+                link_preview=youtube_preview  # ✅ ADD THIS
+            )
+
+            # Attach any uploaded media
+            for file in files:
+                PostMedia.objects.create(post=post, file=file)
+
+        serializer = self.get_serializer(post, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+
+
+    def list(self, request, *args, **kwargs):
+        """
+        Feed:
+        - My posts
+        - Posts from users I follow (accepted only)
+        """
+        user = request.user
+
+        # ✅ Users I follow (accepted only)
+        following_ids = FollowRequest.objects.filter(
+            follower=user,
+            status="accepted"
+        ).values_list("following_id", flat=True)
+
+        queryset = Post.objects.filter(
+            Q(user=user) | Q(user__id__in=following_ids)
+        ).select_related("user") \
+        .prefetch_related("media", "likes", "comments") \
+        .order_by("-created_at")
+
+        serializer = self.get_serializer(
+            queryset,
+            many=True,
+            context={"request": request}
+        )
+        return Response(serializer.data)
+
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Get single post with media.
+        """
+        post = self.get_object()
+        serializer = self.get_serializer(post, context={'request': request})
+        return Response(serializer.data)
+    
+    def _check_owner(self, request, post):
+        if post.user != request.user:
+            raise PermissionDenied("You do not have permission to modify this post.")
+        
+    def update(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
+
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
+
+        return super().destroy(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
+
+        title = request.data.get('title', post.title)
+        content = request.data.get('content', post.content)
+        files = request.FILES.getlist('files')
+
+        post.title = title
+        post.content = content
+        post.link_preview = get_youtube_preview(content)
+        post.save()
+
+        if files:
+            post.media.all().delete()
+            for file in files:
+                PostMedia.objects.create(post=post, file=file)
+
+        serializer = self.get_serializer(post, context={'request': request})
+        return Response(serializer.data)
+
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def like(self, request, pk=None):
+        post = self.get_object()
+
+        like, created = Like.objects.get_or_create(
+            user=request.user,
+            post=post
+        )
+
+        if created:
+            is_liked = True
+
+            # 🔔 Notify post owner
+            if post.user != request.user:
+                notification = Notification.objects.create(
+                    user=post.user,
+                    actor=request.user,
+                    action="liked your post",
+                    post=post,
+                )
+
+                from accounts.firebase_utils import push_notification_to_firebase
+                push_notification_to_firebase(
+                    user_id=post.user.id,
+                    data={
+                        "action": "liked your post",
+                        "actor": request.user.id,
+                        "post": post.id,
+                        "created_at": str(notification.created_at),
+                        "is_read": False
+                    }
+                )
+        else:
+            like.delete()
+            is_liked = False
+
+        return Response(
+            {
+                "id": post.id,
+                "is_liked": is_liked,
+                "like_count": post.likes.count()
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+    # Add comment
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def comment(self, request, pk=None):
+        post = self.get_object()
+        c_content = request.data.get('c_content')
+
+        if not c_content:
+            return Response({'error': 'Comment cannot be empty'}, status=400)
+
+        comment = Comment.objects.create(
+            user=request.user,
+            post=post,
+            c_content=c_content
+        )
+
+        if post.user != request.user:
+            notification = Notification.objects.create(
+                user=post.user,
+                actor=request.user,
+                action="commented on your post",
+                post=post,
+            )
+
+            from accounts.firebase_utils import push_notification_to_firebase
+            push_notification_to_firebase(
+                user_id=post.user.id,
+                data={
+                    "action": "commented on your post",
+                    "actor": request.user.id,
+                    "post": post.id,
+                    "created_at": str(notification.created_at),
+                    "is_read": False
+                }
+            )
+
+        serializer = CommentSerializer(comment, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+    @action(detail=False, methods=["get"], permission_classes=[IsAuthenticated])
+    def my_latest(self, request):
+        """
+        Return posts by logged-in user.
+        """
+        posts = Post.objects.filter(user=request.user).order_by('-created_at')
+        serializer = self.get_serializer(posts, many=True, context={'request': request})
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def bookmark(self, request, pk=None):
+        post = self.get_object()
+
+        bookmark, created = Bookmark.objects.get_or_create(
+            user=request.user,
+            post=post
+        )
+
+        if created:
+            is_bookmarked = True
+        else:
+            bookmark.delete()
+            is_bookmarked = False
+
+        return Response(
+            {
+                "id": post.id,
+                "is_bookmarked": is_bookmarked,
+                "bookmark_count": post.bookmarks.count()
+            },
+            status=status.HTTP_200_OK
+        )
+
+    
+
+    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
+    def share(self, request, pk=None):
+        post = self.get_object()
+        receiver_id = request.data.get("receiver")
+
+        if not receiver_id:
+            return Response(
+                {"error": "Receiver is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            receiver = User.objects.get(id=receiver_id)
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Receiver not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ✅ Use existing Message model
+        message = Message.objects.create(
+            sender=request.user,
+            receiver=receiver,
+            post=post,
+            content="Shared a post"
+        )
+
+        # Notification
+        if receiver != request.user:
+            notification = Notification.objects.create(
+                user=receiver,
+                actor=request.user,
+                action="shared a post with you",
+                post=post
+            )
+
+            from accounts.firebase_utils import push_notification_to_firebase
+            push_notification_to_firebase(
+                user_id=receiver.id,
+                data={
+                    "action": "shared a post with you",
+                    "actor": request.user.id,
+                    "post": post.id,
+                    "created_at": str(notification.created_at),
+                    "is_read": False
+                }
+            )
+
+        return Response(
+            {"message": "Post shared successfully"},
+            status=status.HTTP_201_CREATED
+        )
+
+

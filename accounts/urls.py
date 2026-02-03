@@ -10,7 +10,7 @@ from .views import (
     get_scientific_interest, update_scientific_interest, verify_email, resend_verification_email,
     UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView,
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet,
-    HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet
+    HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet, FollowRequestViewSet, UserFollowViewSet
 )
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
@@ -32,6 +32,8 @@ router.register('messages', MessageViewSet, basename='messages')
 router.register("folders", FolderViewSet, basename="folders")
 router.register("folder-items", FolderItemViewSet, basename="folder-items")
 router.register("calendar-events", CalendarEventViewSet, basename="calender-events")
+router.register('follows', FollowRequestViewSet, basename='follows')
+router.register('usersfollow', UserFollowViewSet, basename='user-follows')
 
 
 

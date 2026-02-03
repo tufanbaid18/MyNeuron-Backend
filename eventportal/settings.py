@@ -118,8 +118,8 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = "tufanbaid18@gmail.com"
 EMAIL_HOST_PASSWORD = "hlrv clts fscl crad"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-# FRONTEND_URL = "http://localhost:5173"
-FRONTEND_URL = "68.178.168.255:9005"
+FRONTEND_URL = "http://localhost:5173"
+# FRONTEND_URL = "68.178.168.255:9005"
 
 
 REST_FRAMEWORK = {
@@ -144,3 +144,4 @@ SIMPLE_JWT = {
 # settings.py
 CORS_ALLOW_ALL_ORIGINS = True
 
+ENABLE_FIREBASE = True # ✅ turn ON only in production

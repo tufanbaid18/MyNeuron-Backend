@@ -5,21 +5,10 @@ from .models import (
     Member,
     PersonalDetail,
     ProfessionalDetail,
-    Post,
-    PostMedia,
-    Education,
-    CalendarEvent, ScientificInterest
+    Post, PostMedia, Education,
+    CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program
 )
 from .validators import validate_email, validate_password_complexity
-from .models import Comment, Program
-from .models import Notification
-from .models import Message
-from .models import Folder, FolderItem
-from rest_framework import serializers
-from .models import PastExperience, ProfessionalDetail
-
-
-
 
 
 # -------------------------------
@@ -89,7 +78,7 @@ class UserSerializer(serializers.ModelSerializer):
     
     def get_profile_image(self, obj):
         request = self.context.get("request")
-        if obj.profile_image:
+        if obj.profile_image and request:
             return request.build_absolute_uri(obj.profile_image.url)
         return None
 
@@ -186,6 +175,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     professional_detail = ProfessionalDetailSerializer(required=False)
     education = EducationSerializer(many=True, required=False)
     scientific_interest = ScientificInterestSerializer(required=False)
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+
+    is_following = serializers.SerializerMethodField()
+    follow_request_status = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -202,7 +196,56 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "professional_detail",
             "education",
             "scientific_interest",
+            "followers_count",
+            "following_count",
+            "is_following",
+            "follow_request_status",
         ]
+
+    # -----------------------
+    # COUNTS
+    # -----------------------
+    def get_followers_count(self, obj):
+        return FollowRequest.objects.filter(
+            following=obj,
+            status="accepted"
+        ).count()
+
+    def get_following_count(self, obj):
+        return FollowRequest.objects.filter(
+            follower=obj,
+            status="accepted"
+        ).count()
+
+    # -----------------------
+    # USER STATE
+    # -----------------------
+    def get_is_following(self, obj):
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return False
+
+        return FollowRequest.objects.filter(
+            follower=request.user,
+            following=obj,
+            status="accepted"
+        ).exists()
+
+    def get_follow_request_status(self, obj):
+        """
+        returns: pending | accepted | rejected | none
+        """
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return "none"
+
+        fr = FollowRequest.objects.filter(
+            follower=request.user,
+            following=obj
+        ).first()
+
+        return fr.status if fr else "none"
+    
 
     def update(self, instance, validated_data):
         personal_data = validated_data.pop("personal_detail", {})
@@ -257,6 +300,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
         return instance
 
+    def get_profile_image(self, obj):
+        request = self.context.get("request")
+        if obj.profile_image and request:
+            return request.build_absolute_uri(obj.profile_image.url)
+        return None
 
 
     
@@ -294,10 +342,22 @@ class MemberSerializer(serializers.ModelSerializer):
 # -------------------------------
 class UserMiniSerializer(serializers.ModelSerializer):
     """Minimal user info for posts (for displaying author name & image)."""
+    is_following = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'email', 'profile_image']
+        fields = ['id', 'first_name', 'last_name', 'email', 'profile_image', 'is_following',]
+
+    def get_is_following(self, obj):
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return False
+
+        return FollowRequest.objects.filter(
+            follower=request.user,
+            following=obj,
+            status="accepted"
+        ).exists()
 
 
 class PostMediaSerializer(serializers.ModelSerializer):
@@ -696,3 +756,53 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
         if obj.profile_image and request:
             return request.build_absolute_uri(obj.profile_image.url)
         return None
+
+
+class FollowUserListSerializer(serializers.ModelSerializer):
+    profile_image = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "first_name",
+            "last_name",
+            "email",
+            "profile_image",
+            "is_following",
+        ]
+
+    def get_profile_image(self, obj):
+        request = self.context.get("request")
+        if obj.profile_image and request:
+            return request.build_absolute_uri(obj.profile_image.url)
+        return None
+
+    def get_is_following(self, obj):
+        request = self.context.get("request")
+        if not request or request.user.is_anonymous:
+            return False
+
+        return FollowRequest.objects.filter(
+            follower=request.user,
+            following=obj,
+            status="accepted"
+        ).exists()
+
+
+class FollowRequestSerializer(serializers.ModelSerializer):
+    follower = UserMiniSerializer(read_only=True)
+    following = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = FollowRequest
+        fields = [
+            "id",
+            "follower",
+            "following",
+            "status",
+            "created_at",
+            "responded_at",
+        ]
+        read_only_fields = ["status", "responded_at"]
