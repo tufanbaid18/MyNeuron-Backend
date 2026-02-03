@@ -115,12 +115,12 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = "tufanbaid18@gmail.com"
-EMAIL_HOST_PASSWORD = "hlrv clts fscl crad"
+EMAIL_HOST_USER = "twine.support@bencoslife.com"
+EMAIL_HOST_PASSWORD = "ehqu fwhb gjci qauo"
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-FRONTEND_URL = "http://localhost:5173"
+# FRONTEND_URL = "http://localhost:5173"
 # FRONTEND_URL = "68.178.168.255:9005"
-
+FRONTEND_URL = "https://myneuronworld.com"
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
