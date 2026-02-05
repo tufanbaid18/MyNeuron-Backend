@@ -291,9 +291,6 @@ def api_register(request):
     # 🔍 Check if user already exists
     existing_user = User.objects.filter(email=email).first()
 
-
-
-
     if existing_user:
         # 🟡 User exists but email NOT verified → resend email
         if not existing_user.is_email_verified:
@@ -1894,6 +1891,28 @@ class FollowRequestViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+    
+
+    
+    @action(detail=False, methods=["get"], url_path="my-following")
+    def my_following(self, request):
+        qs = FollowRequest.objects.filter(
+            follower=request.user,
+            status="accepted"
+        ).select_related("following")
+
+        users = [f.following for f in qs]
+
+        serializer = FollowUserListSerializer(
+            users,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+
+
 
 
 
@@ -1936,8 +1955,6 @@ class UserFollowViewSet(ViewSet):
             context={"request": request}
         )
         return Response(serializer.data)
-
-
 
 
 

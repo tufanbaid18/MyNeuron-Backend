@@ -5,6 +5,12 @@ from django.conf import settings
 import uuid
 from django.utils.timezone import now
 from datetime import timedelta
+from django.core.validators import FileExtensionValidator
+
+
+
+def profile_upload_path(instance, filename):
+    return f"profiles/user_{instance.id}/{filename}"
 
 
 class User(AbstractUser):
@@ -16,12 +22,20 @@ class User(AbstractUser):
     first_name = models.CharField(max_length=150)
     middle_name = models.CharField(max_length=150, blank=True, null=True)
     last_name = models.CharField(max_length=150, blank=True)
-    profile_image = models.ImageField(upload_to='profiles/', null=True, blank=True)
+    profile_image = models.ImageField(
+        upload_to=profile_upload_path,
+        null=True,
+        blank=True,
+        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp"])]
+    )
     profile_title = models.CharField(max_length=255, blank=True, null=True)
     is_verified = models.BooleanField(
         ("verified status"),
         default=False,
-        help_text=("Designates whether the user has done payment or not."),
+    )
+    is_verified_lite = models.BooleanField(
+        ("verified status lite"),
+        default=False,
     )
     is_email_verified = models.BooleanField(default=False)
     
@@ -40,6 +54,32 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+
+
+class Event(models.Model):
+    name = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"{self.id} - {self.name}"
+    
+
+
+
+class Member(models.Model):
+    ROLE_CHOICES = (
+        ('participant', 'Participant'),
+        ('speaker', 'Speaker'),
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='members')
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='members')
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user','event','role')
+
+    def __str__(self):
+        return f"Member {self.id}: {self.user.email} -> {self.event.name} ({self.role})"
 
 
 
@@ -318,36 +358,6 @@ class ScientificInterest(models.Model):
 
 
 
-
-
-class Event(models.Model):
-    name = models.CharField(max_length=255)
-
-    def __str__(self):
-        return f"{self.id} - {self.name}"
-    
-
-
-
-
-
-
-
-class Member(models.Model):
-    ROLE_CHOICES = (
-        ('participant', 'Participant'),
-        ('speaker', 'Speaker'),
-    )
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='members')
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name='members')
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = ('user','event','role')
-
-    def __str__(self):
-        return f"Member {self.id}: {self.user.email} -> {self.event.name} ({self.role})"
 
 
 

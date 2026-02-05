@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     # 'rest_framework.authtoken',
     'accounts',
     'corsheaders',
+    'storages',
 ]
 
 MIDDLEWARE = [
@@ -115,12 +116,11 @@ EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
-EMAIL_HOST_USER = "twine.support@bencoslife.com"
-EMAIL_HOST_PASSWORD = "ehqu fwhb gjci qauo"
-DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-# FRONTEND_URL = "http://localhost:5173"
-# FRONTEND_URL = "68.178.168.255:9005"
-FRONTEND_URL = "https://myneuronworld.com"
+EMAIL_HOST_USER = config("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = config("EMAIL_HOST_PASSWORD")
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL")
+FRONTEND_URL = config("FRONTEND_URL")
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -133,7 +133,7 @@ REST_FRAMEWORK = {
 
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'AUTH_HEADER_TYPES': ('Bearer',),
     'ROTATE_REFRESH_TOKENS': True,
@@ -145,3 +145,28 @@ SIMPLE_JWT = {
 CORS_ALLOW_ALL_ORIGINS = True
 
 ENABLE_FIREBASE = True # ✅ turn ON only in production
+
+
+
+# ==========================
+# AWS S3 CONFIGURATION
+# ==========================
+
+AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY")
+AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME")
+
+AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="ap-south-1")
+AWS_S3_SIGNATURE_VERSION = "s3v4"
+
+AWS_S3_FILE_OVERWRITE = False
+AWS_DEFAULT_ACL = None
+
+AWS_QUERYSTRING_AUTH = False  # public files
+
+AWS_LOCATION = "media"
+
+# MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{AWS_LOCATION}/"
+
+DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+

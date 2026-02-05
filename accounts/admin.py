@@ -7,7 +7,7 @@ from .models import PersonalDetail, Education, ProfessionalDetail, Notification
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
 
-    list_display = ('email', 'first_name', 'last_name', 'role', 'is_staff', 'is_verified')
+    list_display = ('email', 'first_name', 'last_name', 'role', 'is_staff', 'is_verified', 'is_verified_lite')
     ordering = ('email',)
     search_fields = ('email', 'first_name')
 
@@ -22,7 +22,7 @@ class UserAdmin(BaseUserAdmin):
                 'profile_title',
             )
         }),
-        ('Role info', {'fields': ('role','is_verified')}),
+        ('Role info', {'fields': ('role','is_verified', 'is_verified_lite')}),
         ('Permissions', {
             'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')
         }),

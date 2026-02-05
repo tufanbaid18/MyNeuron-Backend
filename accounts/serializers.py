@@ -34,6 +34,7 @@ class UserSerializer(serializers.ModelSerializer):
             "profile_image",
             "role",
             "is_verified",
+            "is_verified_lite",
             "password",
             "confirm_password",
         ]
@@ -71,6 +72,7 @@ class UserSerializer(serializers.ModelSerializer):
             last_name=validated_data.get("last_name"),
             is_email_verified=False,  # 🔒 FORCE FALSE
             is_verified=False,        # 🔒 PAYMENT VERIFICATION
+            is_verified_lite=False,
             role="user",              # 🔒 DEFAULT ROLE
         )
 
@@ -728,12 +730,26 @@ class PublicProfessionalDetailSerializer(serializers.ModelSerializer):
             "past_experiences",
         ]
 
+class PublicScientificInterestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScientificInterest
+        fields = [
+            "research_area_of_expertise",
+            "major_focus",
+            "specific_research_areas",
+            "organ_sites",
+            "additional_research_areas",
+            "brief_description",
+        ]
+
+
 
 class PublicUserProfileSerializer(serializers.ModelSerializer):
     profile_image = serializers.SerializerMethodField()
     personal_detail = PublicPersonalDetailSerializer(read_only=True)
     professional_detail = PublicProfessionalDetailSerializer(read_only=True)
     education = PublicEducationSerializer(many=True, read_only=True)
+    scientific_interest = PublicScientificInterestSerializer(read_only=True)
 
     class Meta:
         model = User
@@ -749,6 +765,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             "personal_detail",
             "professional_detail",
             "education",
+            "scientific_interest",
         ]
 
     def get_profile_image(self, obj):
