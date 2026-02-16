@@ -7,9 +7,11 @@ from django.contrib.auth import logout
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .serializers import FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer 
-from .models import FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken
+from .serializers import FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer 
+from .models import FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken, Article, ArticleReference
 from .forms import RegisterForm
+from .models import ArticleRating
+from .serializers import ArticleRatingSerializer
 from django.http import JsonResponse
 from django.core.files.base import ContentFile
 import base64, uuid
@@ -24,6 +26,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django_filters.rest_framework import DjangoFilterBackend
 
 
 # # Web registration
@@ -1251,7 +1254,8 @@ class ProgramViewSet(viewsets.ModelViewSet):
     serializer_class = ProgramSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter, DjangoFilterBackend,]
+    filterset_fields = ["speaker"]   # 👈 ADD THIS
     search_fields = ["topic", "venue", "speaker__first_name", "event__name"]
     ordering_fields = ["date", "start_time"]
 
@@ -2240,3 +2244,71 @@ class PostViewSet(viewsets.ModelViewSet):
         )
 
 
+
+class IsAuthorOrReadOnly(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return obj.author == request.user
+
+  
+class ArticleViewSet(viewsets.ModelViewSet):
+    serializer_class = ArticleSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAuthorOrReadOnly]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if self.request.method in permissions.SAFE_METHODS:
+            return Article.objects.filter(is_published=True)
+
+        return Article.objects.filter(author=user)
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def publish(self, request, pk=None):
+        article = self.get_object()
+
+        if article.is_published:
+            return Response(
+                {"detail": "Article already published."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        article.is_published = True
+        article.published_at = timezone.now()
+        article.save()
+
+        return Response(
+            {"detail": "Article published successfully."}
+        )
+
+
+class ArticleReferenceViewSet(viewsets.ModelViewSet):
+    serializer_class = ArticleReferenceSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return ArticleReference.objects.filter(
+            article__author=self.request.user
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(
+            referenced_by=self.request.user
+        )
+
+
+class ArticleRatingViewSet(viewsets.ModelViewSet):
+    serializer_class = ArticleRatingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return ArticleRating.objects.filter(
+            article__is_published=True
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

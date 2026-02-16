@@ -6,6 +6,9 @@ import uuid
 from django.utils.timezone import now
 from datetime import timedelta
 from django.core.validators import FileExtensionValidator
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
+from django.db.models import Avg, Count
 
 
 
@@ -367,12 +370,12 @@ class ScientificInterest(models.Model):
 
 
 class Program(models.Model):
-    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="programs")
+    event = models.ForeignKey(Event, on_delete=models.CASCADE, related_name="programs", blank=True, null=True)
     speaker = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
         limit_choices_to={'role': 'speaker'},  # Only speakers visible in admin
-        related_name="programs"
+        related_name="programs", blank=True, null=True
     )
     venue = models.CharField(max_length=255)
     topic = models.CharField(max_length=255)
@@ -695,3 +698,236 @@ class CalendarEvent(models.Model):
 
     def __str__(self):
         return f"{self.title} - {self.user}"
+
+
+
+
+
+class Article(models.Model):
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="articles"
+    )
+
+    title = models.CharField(max_length=500)
+
+    featured_image = models.ImageField(
+        upload_to="articles/featured/",
+        null=True,
+        blank=True
+    )
+
+    cover_image = models.ImageField(
+        upload_to="articles/covers/",
+        null=True,
+        blank=True
+    )
+
+    specialization = models.CharField(
+        max_length=255,
+        help_text="Eg: Neuroscience, AI, Biology"
+    )
+
+    abstract = models.TextField()
+
+    acknowledgements = models.TextField(blank=True, null=True)
+    author_contributions = models.TextField(blank=True, null=True)
+    funding = models.TextField(blank=True, null=True)
+    competing_interests = models.TextField(blank=True, null=True)
+    disclosures_ethics = models.TextField(blank=True, null=True)
+
+    is_published = models.BooleanField(default=False)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def author_name(self):
+        return f"{self.author.first_name} {self.author.last_name}".strip()
+
+    def __str__(self):
+        return self.title
+    
+    @property
+    def average_rating(self):
+        return self.ratings.aggregate(
+            avg=Avg("rating")
+        )["avg"] or 0
+
+    @property
+    def rating_count(self):
+        return self.ratings.count()
+    
+
+
+class ArticleSection(models.Model):
+    SECTION_CHOICES = (
+        ("introduction", "Introduction"),
+        ("materials_methods", "Materials & Methods"),
+        ("results", "Results"),
+        ("discussion", "Discussion"),
+        ("conclusion", "Conclusion"),
+        ("custom", "Custom"),
+    )
+
+    article = models.ForeignKey(
+        Article,
+        on_delete=models.CASCADE,
+        related_name="sections"
+    )
+
+    section_type = models.CharField(
+        max_length=50,
+        choices=SECTION_CHOICES
+    )
+
+    title = models.CharField(max_length=255)
+    content = models.TextField()  # Rich text editor here
+
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"{self.article.title} - {self.title}"
+
+class ArticleFigure(models.Model):
+    article = models.ForeignKey(
+        Article,
+        on_delete=models.CASCADE,
+        related_name="figures"
+    )
+
+    section = models.ForeignKey(
+        ArticleSection,
+        on_delete=models.CASCADE,
+        related_name="figures",
+        null=True,
+        blank=True
+    )
+
+    image = models.ImageField(upload_to="articles/figures/")
+    caption = models.TextField(blank=True)
+
+    figure_number = models.PositiveIntegerField(editable=False)
+
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            last = ArticleFigure.objects.filter(
+                article=self.article
+            ).order_by("-figure_number").first()
+            self.figure_number = (last.figure_number + 1) if last else 1
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Figure {self.figure_number}"
+
+
+class ArticleKeyword(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+
+    def __str__(self):
+        return self.name
+
+class ArticleKeywordMap(models.Model):
+    article = models.ForeignKey(
+        Article,
+        on_delete=models.CASCADE,
+        related_name="keyword_maps"
+    )
+    keyword = models.ForeignKey(
+        ArticleKeyword,
+        on_delete=models.CASCADE
+    )
+
+    class Meta:
+        unique_together = ("article", "keyword")
+
+
+class ArticleReference(models.Model):
+    article = models.ForeignKey(
+        Article,
+        on_delete=models.CASCADE,
+        related_name="references"
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE
+    )
+
+    referenced_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="article_mentions"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("article", "user")
+        indexes = [
+            models.Index(fields=["article", "user"]),
+        ]
+
+    def clean(self):
+        """
+        Ensure referenced user is FOLLOWING the article author
+        """
+        is_follower = FollowRequest.objects.filter(
+            follower=self.user,
+            following=self.article.author,
+            status="accepted"
+        ).exists()
+
+        if not is_follower:
+            raise ValidationError(
+                _("You can only reference users who are following you.")
+            )
+
+    def save(self, *args, **kwargs):
+        self.full_clean()  # calls clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.user.email} referenced in {self.article.title}"
+
+
+
+
+class ArticleRating(models.Model):
+    article = models.ForeignKey(
+        Article,
+        on_delete=models.CASCADE,
+        related_name="ratings"
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="article_ratings"
+    )
+
+    rating = models.PositiveSmallIntegerField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("article", "user")
+        indexes = [
+            models.Index(fields=["article", "rating"]),
+        ]
+
+    def clean(self):
+        if not (1 <= self.rating <= 5):
+            raise ValidationError("Rating must be between 1 and 5.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.rating}★ by {self.user.email}"

@@ -6,9 +6,11 @@ from .models import (
     PersonalDetail,
     ProfessionalDetail,
     Post, PostMedia, Education,
-    CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program
+    CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program, 
+    Article, ArticleSection, ArticleFigure, ArticleKeyword, ArticleKeywordMap, ArticleReference, ArticleRating
 )
 from .validators import validate_email, validate_password_complexity
+from django.utils import timezone
 
 
 # -------------------------------
@@ -539,16 +541,18 @@ class ProgramSerializer(serializers.ModelSerializer):
         ]
 
     def get_speaker_name(self, obj):
+        if not obj.speaker:
+            return None
         return f"{obj.speaker.first_name} {obj.speaker.last_name}".strip()
-    
+
+
     def get_speaker_image(self, obj):
         request = self.context.get("request")
 
-        if obj.speaker.profile_image:
-            # return absolute URL
+        if obj.speaker and obj.speaker.profile_image:
             return request.build_absolute_uri(obj.speaker.profile_image.url)
 
-        return None 
+        return None
 
 
 
@@ -823,3 +827,150 @@ class FollowRequestSerializer(serializers.ModelSerializer):
             "responded_at",
         ]
         read_only_fields = ["status", "responded_at"]
+
+
+
+class ArticleSectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArticleSection
+        fields = (
+            "id",
+            "section_type",
+            "title",
+            "content",
+            "order",
+        )
+
+
+class ArticleFigureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArticleFigure
+        fields = (
+            "id",
+            "section",
+            "image",
+            "caption",
+            "figure_number",
+        )
+        read_only_fields = ("figure_number",)
+
+class ArticleKeywordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArticleKeyword
+        fields = ("id", "name")
+
+class ArticleReferenceSerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source="user.email", read_only=True)
+
+    class Meta:
+        model = ArticleReference
+        fields = ("id", "user", "user_email", "created_at")
+
+    def validate_user(self, user):
+        request_user = self.context["request"].user
+
+        is_follower = FollowRequest.objects.filter(
+            follower=user,
+            following=request_user,
+            status="accepted"
+        ).exists()
+
+        if not is_follower:
+            raise serializers.ValidationError(
+                "You can only reference users who are following you."
+            )
+
+        return user
+
+class ArticleSerializer(serializers.ModelSerializer):
+    sections = ArticleSectionSerializer(many=True, required=False)
+    figures = ArticleFigureSerializer(many=True, required=False, read_only=True)
+    references = ArticleReferenceSerializer(many=True, read_only=True)
+
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Article
+        fields = (
+            "id",
+            "title",
+            "specialization",
+            "abstract",
+            "featured_image",
+            "cover_image",
+            "acknowledgements",
+            "author_contributions",
+            "funding",
+            "competing_interests",
+            "disclosures_ethics",
+            "is_published",
+            "published_at",
+            "author_name",
+            "sections",
+            "figures",
+            "references",
+            "created_at",
+            "updated_at",
+            "average_rating",
+            "rating_count",
+        )
+        read_only_fields = ("author_name", "published_at")
+
+    def get_author_name(self, obj):
+        return obj.author_name()
+
+    def create(self, validated_data):
+        sections_data = validated_data.pop("sections", [])
+        article = Article.objects.create(
+            author=self.context["request"].user,
+            **validated_data
+        )
+
+        for section in sections_data:
+            ArticleSection.objects.create(article=article, **section)
+
+        return article
+
+    def update(self, instance, validated_data):
+        sections_data = validated_data.pop("sections", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if instance.is_published and not instance.published_at:
+            instance.published_at = timezone.now()
+
+        instance.save()
+
+        if sections_data is not None:
+            instance.sections.all().delete()
+            for section in sections_data:
+                ArticleSection.objects.create(article=instance, **section)
+
+        return instance
+
+
+
+class ArticleRatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ArticleRating
+        fields = ("id", "article", "rating", "created_at")
+        read_only_fields = ("created_at",)
+
+    def validate_rating(self, value):
+        if value < 1 or value > 5:
+            raise serializers.ValidationError(
+                "Rating must be between 1 and 5."
+            )
+        return value
+
+    def create(self, validated_data):
+        user = self.context["request"].user
+        article = validated_data["article"]
+
+        rating_obj, _ = ArticleRating.objects.update_or_create(
+            user=user,
+            article=article,
+            defaults={"rating": validated_data["rating"]}
+        )
+        return rating_obj

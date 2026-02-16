@@ -14,3 +14,4 @@ beautifulsoup4
 djangorestframework-simplejwt
 boto3>=1.28
 django-storages>=1.14
+django-filter
