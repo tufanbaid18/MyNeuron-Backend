@@ -11,6 +11,8 @@ from .models import (
 )
 from .validators import validate_email, validate_password_complexity
 from django.utils import timezone
+from django.contrib.auth.password_validation import validate_password
+
 
 
 # -------------------------------
@@ -86,6 +88,24 @@ class UserSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.profile_image.url)
         return None
 
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+class ResetPasswordSerializer(serializers.Serializer):
+    token = serializers.UUIDField()
+    new_password = serializers.CharField()
+    confirm_password = serializers.CharField()
+
+    def validate(self, data):
+        if data["new_password"] != data["confirm_password"]:
+            raise serializers.ValidationError(
+                {"confirm_password": "Passwords do not match"}
+            )
+
+        validate_password(data["new_password"])
+        return data
 
 
 

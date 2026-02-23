@@ -11,7 +11,7 @@ from .views import (
     UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView,
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet, FollowRequestViewSet, UserFollowViewSet,
-    ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet
+    ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet, reset_password, forgot_password
 )
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
@@ -63,7 +63,7 @@ urlpatterns = [
     path("api/speakers/<int:id>/", get_speaker_by_id, name="get_speaker_by_id"),
     path("api/conversations/", ConversationViewSet.as_view({"get": "list"})),
 
-        # 🔥 ADD THESE — PAST EXPERIENCE 🔥
+    # 🔥 ADD THESE — PAST EXPERIENCE 🔥
     path('api/profile/past-experience/', get_past_experiences),
     path('api/profile/past-experience/add/', add_past_experience),
     path('api/profile/past-experience/<int:pk>/update/', update_past_experience),
@@ -77,17 +77,9 @@ urlpatterns = [
     path("api/og-meta/", OpenGraphMetaAPIView.as_view(), name="og-meta"),
     path("api/me", me),
     path("api/qr/", generate_qr_from_url),
-    path(
-        "api/profile/scientific-interest/",
-        get_scientific_interest,
-        name="get-scientific-interest"
-    ),
-    path(
-        "api/profile/scientific-interest/update/",
-        update_scientific_interest,
-        name="update-scientific-interest"
-    ),
+    path("api/profile/scientific-interest/", get_scientific_interest, name="get-scientific-interest"),
+    path("api/profile/scientific-interest/update/", update_scientific_interest, name="update-scientific-interest"),
     path("api/resend-verification/", resend_verification_email, name="resend-verification"),
-
-
+    path("api/forgot-password/", forgot_password),
+    path("api/reset-password/", reset_password),
 ]

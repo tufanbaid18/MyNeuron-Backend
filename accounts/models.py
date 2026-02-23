@@ -57,7 +57,16 @@ class User(AbstractUser):
     def __str__(self):
         return self.email
 
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    token = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
+    def is_expired(self):
+        return self.created_at < now() - timedelta(hours=1)
+
+    def __str__(self):
+        return f"Password reset token for {self.user.email}"
 
 class Event(models.Model):
     name = models.CharField(max_length=255)

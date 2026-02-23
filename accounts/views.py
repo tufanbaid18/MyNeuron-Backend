@@ -7,8 +7,8 @@ from django.contrib.auth import logout
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .serializers import FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer 
-from .models import FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken, Article, ArticleReference
+from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer, FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer 
+from .models import PasswordResetToken, FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken, Article, ArticleReference
 from .forms import RegisterForm
 from .models import ArticleRating
 from .serializers import ArticleRatingSerializer
@@ -133,7 +133,7 @@ def get_tokens_for_user(user):
 #       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
 #     }}
 #     .header {{
-#       background: #1e88e5;
+#       background: #70a83e;
 #       color: #ffffff;
 #       padding: 20px;
 #       text-align: center;
@@ -147,7 +147,7 @@ def get_tokens_for_user(user):
 #       display: inline-block;
 #       margin: 30px 0;
 #       padding: 14px 28px;
-#       background: #1e88e5;
+#       background: #70a83e;
 #       color: #ffffff !important;
 #       text-decoration: none;
 #       border-radius: 6px;
@@ -240,7 +240,7 @@ def verification_email_html(user, verify_url):
 </head>
 <body style="background:#f4f6f8;font-family:Arial;padding:20px;">
   <div style="max-width:600px;margin:auto;background:#fff;border-radius:8px;overflow:hidden;">
-    <div style="background:#1e88e5;color:#fff;padding:20px;text-align:center;">
+    <div style="background:#70a83e;color:#fff;padding:20px;text-align:center;">
       <h1>Welcome to MyNeuron</h1>
     </div>
 
@@ -251,7 +251,7 @@ def verification_email_html(user, verify_url):
 
       <p style="text-align:center;">
         <a href="{verify_url}"
-           style="background:#1e88e5;color:#fff;padding:14px 28px;
+           style="background:#70a83e;color:#fff;padding:14px 28px;
                   text-decoration:none;border-radius:6px;font-weight:bold;">
           Verify Email
         </a>
@@ -476,12 +476,12 @@ def resend_verification_email(request):
     <html>
       <body style="font-family: Arial; background:#f4f6f8; padding:20px;">
         <div style="max-width:600px; margin:auto; background:#fff; padding:30px; border-radius:8px;">
-          <h2 style="color:#1e88e5;">Verify your email</h2>
+          <h2 style="color:#70a83e;">Verify your email</h2>
           <p>Hi {user.first_name},</p>
           <p>Please click the button below to verify your email:</p>
           <p style="text-align:center;">
             <a href="{verify_url}"
-               style="background:#1e88e5;color:#fff;padding:12px 24px;
+               style="background:#70a83e;color:#fff;padding:12px 24px;
                       text-decoration:none;border-radius:6px;">
               Verify Email
             </a>
@@ -511,6 +511,102 @@ def resend_verification_email(request):
     return Response(
         {"message": "Verification email sent successfully"},
         status=200
+    )
+
+
+
+def password_reset_email_html(user, reset_url):
+    return f"""
+    <html>
+    <body style="font-family:Arial;background:#f4f6f8;padding:20px;">
+      <div style="max-width:600px;margin:auto;background:#fff;border-radius:8px;">
+        <div style="background:#70a83e;color:#fff;padding:20px;text-align:center;">
+          <h2>Password Reset</h2>
+        </div>
+
+        <div style="padding:30px;color:#333;">
+          <p>Hi <strong>{user.first_name}</strong>,</p>
+
+          <p>You requested to reset your password.</p>
+
+          <p style="text-align:center;">
+            <a href="{reset_url}"
+               style="background:#70a83e;color:#fff;padding:14px 28px;
+                      text-decoration:none;border-radius:6px;">
+              Reset Password
+            </a>
+          </p>
+
+          <p>This link expires in <strong>1 hour</strong>.</p>
+
+          <p>If you didn’t request this, ignore this email.</p>
+
+          <p>– MyNeuron Team</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def forgot_password(request):
+    serializer = ForgotPasswordSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    email = serializer.validated_data["email"]
+    user = User.objects.filter(email=email).first()
+
+    # 🔐 Do NOT reveal if email exists
+    if user:
+        PasswordResetToken.objects.filter(user=user).delete()
+
+        token = PasswordResetToken.objects.create(user=user)
+        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token.token}"
+
+        send_mail(
+            subject="Reset your password – MyNeuron",
+            message=f"Reset your password: {reset_url}",
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            html_message=password_reset_email_html(user, reset_url),
+        )
+
+    return Response(
+        {"detail": "If this email exists, a reset link has been sent."},
+        status=200,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def reset_password(request):
+    serializer = ResetPasswordSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    token_value = serializer.validated_data["token"]
+
+    token = PasswordResetToken.objects.filter(token=token_value).first()
+
+    if not token:
+        return Response({"detail": "Invalid token."}, status=400)
+
+    if token.is_expired():
+        token.delete()
+        return Response({"detail": "Token expired."}, status=400)
+
+    user = token.user
+    user.set_password(serializer.validated_data["new_password"])
+    user.save()
+
+    token.delete()
+
+    return Response(
+        {"detail": "Password has been reset successfully."},
+        status=200,
     )
 
 
@@ -576,30 +672,6 @@ def api_event_register(request):
     return Response({'member_id': member.id}, status=201)
 
 
-
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def upload_profile_image(request):
-#     user = request.user
-#     image_data = request.data.get('profile_image')
-
-#     if not image_data:
-#         return Response({'error': 'No image provided'}, status=400)
-
-#     try:
-#         # Decode base64 string and save
-#         format, imgstr = image_data.split(';base64,')
-#         ext = format.split('/')[-1]
-#         file_name = f"{uuid.uuid4()}.{ext}"
-#         user.profile_image.save(file_name, ContentFile(base64.b64decode(imgstr)), save=True)
-
-#         return Response({
-#             'message': 'Profile image uploaded successfully',
-#             'profile_image': user.profile_image.url
-#         }, status=200)
-
-#     except Exception as e:
-#         return Response({'error': str(e)}, status=500)
     
 
 
