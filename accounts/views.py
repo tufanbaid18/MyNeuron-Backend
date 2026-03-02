@@ -27,6 +27,8 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from .s3 import presigned_url
+
 
 
 # # Web registration
@@ -396,7 +398,8 @@ def api_login(request):
             'email': user.email,
             'first_name': user.first_name,
             'last_name': user.last_name,
-            'profile_image': user.profile_image.url if user.profile_image else None,
+            'profile_image': presigned_url(user.profile_image.name)
+            if user.profile_image else None,
             'role': user.role,
             'is_verified': user.is_verified,
             'is_email_verified': user.is_email_verified
@@ -710,9 +713,14 @@ def upload_profile_image(request):
         else:
             return Response({'error': 'No image provided'}, status=400)
 
+        # return Response({
+        #     'message': 'Profile image uploaded successfully',
+        #     'profile_image': f"{request.scheme}://{request.get_host()}{user.profile_image.url}"
+        # }, status=200)
+
         return Response({
             'message': 'Profile image uploaded successfully',
-            'profile_image': f"{request.scheme}://{request.get_host()}{user.profile_image.url}"
+            'profile_image': presigned_url(user.profile_image.name)
         }, status=200)
 
     except Exception as e:

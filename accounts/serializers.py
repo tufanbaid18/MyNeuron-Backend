@@ -12,7 +12,7 @@ from .models import (
 from .validators import validate_email, validate_password_complexity
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
-
+from .s3 import presigned_url
 
 
 # -------------------------------
@@ -83,9 +83,8 @@ class UserSerializer(serializers.ModelSerializer):
         return user
     
     def get_profile_image(self, obj):
-        request = self.context.get("request")
-        if obj.profile_image and request:
-            return request.build_absolute_uri(obj.profile_image.url)
+        if obj.profile_image:
+            return presigned_url(obj.profile_image.name)
         return None
 
 
@@ -367,11 +366,17 @@ class MemberSerializer(serializers.ModelSerializer):
 class UserMiniSerializer(serializers.ModelSerializer):
     """Minimal user info for posts (for displaying author name & image)."""
     is_following = serializers.SerializerMethodField()
+    profile_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['id', 'first_name', 'last_name', 'email', 'profile_image', 'is_following',]
+        fields = ['id', 'first_name', 'last_name', 'email', 'profile_image_url', 'is_following',]
 
+    def get_profile_image_url(self, obj):
+        if obj.profile_image:
+            return presigned_url(obj.profile_image.name)
+        return None
+    
     def get_is_following(self, obj):
         request = self.context.get("request")
         if not request or request.user.is_anonymous:
@@ -392,8 +397,9 @@ class PostMediaSerializer(serializers.ModelSerializer):
         fields = ['id', 'file_url', 'is_video']
 
     def get_file_url(self, obj):
-        request = self.context.get('request')
-        return request.build_absolute_uri(obj.file.url) if obj.file else None
+        if obj.file:
+            return presigned_url(obj.file.name)
+        return None
     
 
 
@@ -488,7 +494,7 @@ class HandshakeSerializer(serializers.ModelSerializer):
             "id": obj.sender.id,
             "name": f"{obj.sender.first_name} {obj.sender.last_name}",
             "email": obj.sender.email,
-            "profile_image": request.build_absolute_uri(obj.sender.profile_image.url)
+            "profile_image": presigned_url(obj.sender.profile_image.name)
             if obj.sender.profile_image else None
         }
 
@@ -570,7 +576,7 @@ class ProgramSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
 
         if obj.speaker and obj.speaker.profile_image:
-            return request.build_absolute_uri(obj.speaker.profile_image.url)
+            return presigned_url(obj.speaker.profile_image.name)
 
         return None
 
@@ -606,13 +612,13 @@ class MessageSerializer(serializers.ModelSerializer):
     def get_sender_image(self, obj):
         request = self.context.get("request")
         if obj.sender.profile_image:
-            return request.build_absolute_uri(obj.sender.profile_image.url)
+            return presigned_url(obj.sender.profile_image.name)
         return None
 
     def get_receiver_image(self, obj):
         request = self.context.get("request")
         if obj.receiver.profile_image:
-            return request.build_absolute_uri(obj.receiver.profile_image.url)
+            return presigned_url(obj.receiver.profile_image.name)
         return None
 
     
@@ -626,10 +632,7 @@ class MessageSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
 
         media = obj.post.media.first()
-        media_url = (
-            request.build_absolute_uri(media.file.url)
-            if media else None
-        )
+        media_url = presigned_url(media.file.name) if media else None
 
         return {
             "id": obj.post.id,
@@ -795,7 +798,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     def get_profile_image(self, obj):
         request = self.context.get("request")
         if obj.profile_image and request:
-            return request.build_absolute_uri(obj.profile_image.url)
+            return presigned_url(obj.profile_image.name)
         return None
 
 
@@ -817,7 +820,7 @@ class FollowUserListSerializer(serializers.ModelSerializer):
     def get_profile_image(self, obj):
         request = self.context.get("request")
         if obj.profile_image and request:
-            return request.build_absolute_uri(obj.profile_image.url)
+            return presigned_url(obj.profile_image.name)
         return None
 
     def get_is_following(self, obj):
