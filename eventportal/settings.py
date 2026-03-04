@@ -11,15 +11,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'replace-this-with-a-secure-key'
 
-DEBUG = False
+DEBUG = True
 
 ALLOWED_HOSTS = [
     "api.myneuronworld.com",
-    "www.myneuronworld.com",
-    "myneuronworld.com",
     "localhost",
     "127.0.0.1",
 ]
+
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -153,11 +152,8 @@ SIMPLE_JWT = {
 }
 
 
-CORS_ALLOW_ALL_ORIGINS = False
-
-CORS_ALLOWED_ORIGINS = [
-    "https://www.myneuronworld.com",
-]
+# settings.py
+CORS_ALLOW_ALL_ORIGINS = True
 
 ENABLE_FIREBASE = True # ✅ turn ON only in production
 
@@ -179,15 +175,11 @@ AWS_DEFAULT_ACL = None
 
 # AWS_QUERYSTRING_AUTH = False  # public files
 
-# AWS_LOCATION = "media"
+AWS_LOCATION = "media"
 
 # MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com/{AWS_LOCATION}/"
 
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-
-AWS_S3_ADDRESSING_STYLE = "virtual"
-AWS_S3_VERIFY = True
-AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 
 CSRF_TRUSTED_ORIGINS = [
     "https://api.myneuronworld.com",
@@ -199,8 +191,3 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
 
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_HTTPONLY = True
-CSRF_COOKIE_HTTPONLY = True
-SECURE_BROWSER_XSS_FILTER = True
-SECURE_CONTENT_TYPE_NOSNIFF = True
