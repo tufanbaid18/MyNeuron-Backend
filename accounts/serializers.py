@@ -324,9 +324,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return instance
 
     def get_profile_image(self, obj):
-        request = self.context.get("request")
-        if obj.profile_image and request:
-            return request.build_absolute_uri(obj.profile_image.url)
+        if obj.profile_image:
+            return presigned_url(obj.profile_image.name)
         return None
 
 
@@ -505,7 +504,7 @@ class HandshakeSerializer(serializers.ModelSerializer):
             "id": obj.receiver.id,
             "name": f"{obj.receiver.first_name} {obj.receiver.last_name}",
             "email": obj.receiver.email,
-            "profile_image": request.build_absolute_uri(obj.receiver.profile_image.url)
+            "profile_image": presigned_url(obj.receiver.profile_image.name)
             if obj.receiver.profile_image else None
         }
 
