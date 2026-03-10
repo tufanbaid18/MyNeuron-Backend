@@ -37,15 +37,6 @@ class UserAdmin(BaseUserAdmin):
 
 admin.site.register(Event)
 admin.site.register(Member)
-admin.site.register(PersonalDetail)
-admin.site.register(Education)
-admin.site.register(ProfessionalDetail)
-admin.site.register(Post)
-admin.site.register(PostMedia)
-admin.site.register(Notification)
-admin.site.register(Like)
-admin.site.register(HandshakeRequest)
-admin.site.register(Comment)
 @admin.register(Program)
 class ProgramAdmin(admin.ModelAdmin):
     list_display = ("id", "event", "speaker", "venue", "topic", "date", "start_time", "end_time")

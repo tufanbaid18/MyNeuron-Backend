@@ -940,3 +940,139 @@ class ArticleRating(models.Model):
 
     def __str__(self):
         return f"{self.rating}★ by {self.user.email}"
+
+
+
+
+
+class Page(models.Model):
+
+    CATEGORY_CHOICES = (
+        ("company", "Company / Organisation / Non Profit"),
+        ("event", "Event"),
+        ("community", "Community"),
+        ("general", "General"),
+    )
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="pages"
+    )
+
+    page_name = models.CharField(max_length=255)
+
+    category = models.CharField(
+        max_length=20,
+        choices=CATEGORY_CHOICES
+    )
+
+    # ---------- Category Specific ----------
+
+    company_name = models.CharField(max_length=255, blank=True, null=True)
+    official_website = models.URLField(blank=True, null=True)
+    company_bio = models.TextField(blank=True, null=True)
+    cin = models.CharField(max_length=100, blank=True, null=True)
+
+    event_name = models.CharField(max_length=255, blank=True, null=True)
+    event_description = models.TextField(blank=True, null=True)
+    tags = models.JSONField(blank=True, null=True)
+
+    community_details = models.TextField(blank=True, null=True)
+
+    # ---------- Common Fields ----------
+
+    bio = models.TextField(blank=True, null=True)
+
+    cover_image = models.ImageField(
+        upload_to="pages/covers/",
+        blank=True,
+        null=True
+    )
+
+    profile_image = models.ImageField(
+        upload_to="pages/profile/",
+        blank=True,
+        null=True
+    )
+
+    website = models.URLField(blank=True, null=True)
+
+    state = models.CharField(max_length=255, blank=True, null=True)
+    zip = models.CharField(max_length=20, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.page_name
+
+    @property
+    def followers_count(self):
+        return self.followers.count()
+    
+class PageFollow(models.Model):
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="followed_pages"
+    )
+
+    page = models.ForeignKey(
+        Page,
+        on_delete=models.CASCADE,
+        related_name="followers"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "page")
+
+    def __str__(self):
+        return f"{self.user} follows {self.page}"
+    
+
+class PagePost(models.Model):
+
+    page = models.ForeignKey(
+        Page,
+        on_delete=models.CASCADE,
+        related_name="posts"
+    )
+
+    content = models.TextField(blank=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Post from {self.page.page_name}"
+    
+
+class PagePostMedia(models.Model):
+
+    post = models.ForeignKey(
+        PagePost,
+        on_delete=models.CASCADE,
+        related_name="media"
+    )
+
+    file = models.FileField(upload_to="page_posts/media/")
+    is_video = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+
+        if self.file and self.file.name.lower().endswith(
+            (".mp4", ".mov", ".avi", ".mkv")
+        ):
+            self.is_video = True
+        else:
+            self.is_video = False
+
+        super().save(*args, **kwargs)

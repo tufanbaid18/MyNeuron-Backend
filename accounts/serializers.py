@@ -1,11 +1,6 @@
 from rest_framework import serializers
 from .models import (
-    User,
-    Event,
-    Member,
-    PersonalDetail,
-    ProfessionalDetail,
-    Post, PostMedia, Education,
+    User, Page, PagePost, PageFollow, PagePostMedia, Event, Member, PersonalDetail, ProfessionalDetail, Post, PostMedia, Education,
     CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program, 
     Article, ArticleSection, ArticleFigure, ArticleKeyword, ArticleKeywordMap, ArticleReference, ArticleRating
 )
@@ -996,3 +991,169 @@ class ArticleRatingSerializer(serializers.ModelSerializer):
             defaults={"rating": validated_data["rating"]}
         )
         return rating_obj
+
+
+
+
+
+class PageSerializer(serializers.ModelSerializer):
+    cover_image_url = serializers.SerializerMethodField()
+    profile_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Page
+        fields = [
+            "id",
+            "page_name",
+            "category",
+
+            "company_name",
+            "official_website",
+            "company_bio",
+            "cin",
+
+            "event_name",
+            "event_description",
+            "tags",
+
+            "community_details",
+
+            "bio",
+            "cover_image",
+            "profile_image",
+            "cover_image_url",
+            "profile_image_url",
+
+            "website",
+            "state",
+            "zip",
+            "country",
+
+            "created_at",
+        ]
+
+        read_only_fields = ["created_at"]
+
+    def get_cover_image_url(self, obj):
+        if obj.cover_image:
+            return presigned_url(obj.cover_image.name)
+        return None
+
+    def get_profile_image_url(self, obj):
+        if obj.profile_image:
+            return presigned_url(obj.profile_image.name)
+        return None
+    
+
+
+class PageDetailSerializer(serializers.ModelSerializer):
+
+    owner = UserMiniSerializer(read_only=True)
+
+    followers_count = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+
+    cover_image_url = serializers.SerializerMethodField()
+    profile_image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Page
+        fields = "__all__"
+
+    def get_followers_count(self, obj):
+        return obj.followers.count()
+
+    def get_is_following(self, obj):
+        request = self.context.get("request")
+
+        if not request or request.user.is_anonymous:
+            return False
+
+        return PageFollow.objects.filter(
+            user=request.user,
+            page=obj
+        ).exists()
+
+    def get_cover_image_url(self, obj):
+        if obj.cover_image:
+            return presigned_url(obj.cover_image.name)
+        return None
+
+    def get_profile_image_url(self, obj):
+        if obj.profile_image:
+            return presigned_url(obj.profile_image.name)
+        return None
+    
+
+class PageFollowSerializer(serializers.ModelSerializer):
+
+    user = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = PageFollow
+        fields = [
+            "id",
+            "user",
+            "page",
+            "created_at"
+        ]
+
+        read_only_fields = ["created_at"]
+
+class PagePostMediaSerializer(serializers.ModelSerializer):
+
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PagePostMedia
+        fields = [
+            "id",
+            "file_url",
+            "is_video"
+        ]
+
+    def get_file_url(self, obj):
+        if obj.file:
+            return presigned_url(obj.file.name)
+        return None
+    
+
+class PagePostSerializer(serializers.ModelSerializer):
+
+    page = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    media = PagePostMediaSerializer(many=True, read_only=True)
+
+    created_by = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = PagePost
+        fields = [
+            "id",
+            "page",
+            "created_by",
+            "content",
+            "media",
+            "created_at",
+        ]
+
+
+
+class FeedSerializer(serializers.Serializer):
+
+    id = serializers.IntegerField()
+    type = serializers.SerializerMethodField()
+    content = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField()
+
+    def get_type(self, obj):
+        if isinstance(obj, Post):
+            return "user_post"
+        if isinstance(obj, PagePost):
+            return "page_post"
+
+    def get_content(self, obj):
+        if isinstance(obj, Post):
+            return obj.content
+        if isinstance(obj, PagePost):
+            return obj.content

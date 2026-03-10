@@ -10,8 +10,8 @@ from django.contrib import messages
 from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer, FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer 
 from .models import PasswordResetToken, FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken, Article, ArticleReference
 from .forms import RegisterForm
-from .models import ArticleRating
-from .serializers import ArticleRatingSerializer
+from .models import ArticleRating, Page, PageFollow, PagePost, PagePostMedia
+from .serializers import ArticleRatingSerializer, PageFollowSerializer, PagePostSerializer, FeedSerializer, PageDetailSerializer, PageSerializer
 from django.http import JsonResponse
 from django.core.files.base import ContentFile
 import base64, uuid
@@ -685,13 +685,7 @@ from rest_framework import status
 from django.core.files.base import ContentFile
 import base64, uuid
 
-import uuid
-import base64
-from django.core.files.base import ContentFile
 
-import uuid
-import base64
-from django.core.files.base import ContentFile
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -2042,6 +2036,16 @@ class UserFollowViewSet(ViewSet):
 
 
 
+
+
+from itertools import chain
+from operator import attrgetter
+
+
+
+
+
+
 # --------------------------------------------------------
 # 🔹 POST VIEWSET (supports text + media upload)
 # --------------------------------------------------------
@@ -2075,32 +2079,46 @@ class PostViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
 
-
     def list(self, request, *args, **kwargs):
-        """
-        Feed:
-        - My posts
-        - Posts from users I follow (accepted only)
-        """
+
         user = request.user
 
-        # ✅ Users I follow (accepted only)
+        # Users I follow
         following_ids = FollowRequest.objects.filter(
             follower=user,
             status="accepted"
         ).values_list("following_id", flat=True)
 
-        queryset = Post.objects.filter(
+        # Pages I follow
+        following_pages = PageFollow.objects.filter(
+            user=user
+        ).values_list("page_id", flat=True)
+
+        # USER POSTS
+        user_posts = Post.objects.filter(
             Q(user=user) | Q(user__id__in=following_ids)
         ).select_related("user") \
-        .prefetch_related("media", "likes", "comments") \
-        .order_by("-created_at")
+        .prefetch_related("media", "likes", "comments")
 
-        serializer = self.get_serializer(
-            queryset,
+        # PAGE POSTS
+        page_posts = PagePost.objects.filter(
+            page_id__in=following_pages
+        ).select_related("page", "created_by") \
+        .prefetch_related("media")
+
+        # MERGE BOTH
+        combined_posts = sorted(
+            chain(user_posts, page_posts),
+            key=attrgetter("created_at"),
+            reverse=True
+        )
+
+        serializer = FeedSerializer(
+            combined_posts,
             many=True,
             context={"request": request}
         )
+
         return Response(serializer.data)
 
 
@@ -2392,3 +2410,245 @@ class ArticleRatingViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+
+class PageViewSet(viewsets.ModelViewSet):
+
+    queryset = Page.objects.all().order_by("-created_at")
+    permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+
+        if self.action == "retrieve":
+            return PageDetailSerializer
+
+        return PageSerializer
+
+    # -----------------------
+    # CREATE PAGE
+    # -----------------------
+    def create(self, request, *args, **kwargs):
+
+        serializer = PageSerializer(data=request.data)
+
+        if serializer.is_valid():
+            serializer.save(owner=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    # -----------------------
+    # MY PAGES
+    # -----------------------
+    @action(detail=False, methods=["get"])
+    def my_pages(self, request):
+
+        pages = Page.objects.filter(owner=request.user)
+
+        serializer = PageSerializer(
+            pages,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+    # -----------------------
+    # PAGE POSTS
+    # -----------------------
+    @action(detail=True, methods=["get"])
+    def posts(self, request, pk=None):
+
+        page = self.get_object()
+
+        posts = page.posts.all().order_by("-created_at")
+
+        from .serializers import PagePostSerializer
+
+        serializer = PagePostSerializer(
+            posts,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+
+class PageFollowViewSet(ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    # -----------------------
+    # FOLLOW PAGE
+    # -----------------------
+    @action(detail=False, methods=["post"])
+    def follow(self, request):
+        page_id = request.data.get("page")
+
+        if not page_id:
+            return Response(
+                {"detail": "page field is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        page = get_object_or_404(Page, id=page_id)
+
+        if page.owner == request.user:
+            return Response(
+                {"detail": "Owner cannot follow their own page"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        follow, created = PageFollow.objects.get_or_create(
+            user=request.user,
+            page=page
+        )
+
+        if not created:
+            return Response(
+                {"detail": "Already following this page"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = PageFollowSerializer(follow, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    # -----------------------
+    # UNFOLLOW PAGE
+    # -----------------------
+    @action(detail=False, methods=["post"])
+    def unfollow(self, request):
+        page_id = request.data.get("page")
+
+        if not page_id:
+            return Response(
+                {"detail": "page field is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        follow = get_object_or_404(
+            PageFollow,
+            user=request.user,
+            page_id=page_id
+        )
+
+        follow.delete()
+
+        return Response({"detail": "Unfollowed page successfully"})
+    
+    @action(detail=False, methods=["get"])
+    def my_followed_pages(self, request):
+
+        follows = PageFollow.objects.filter(
+            user=request.user
+        ).select_related("page")
+
+        pages = [f.page for f in follows]
+
+        serializer = PageSerializer(pages, many=True)
+
+        return Response(serializer.data)
+
+
+class PagePostViewSet(viewsets.ModelViewSet):
+
+    serializer_class = PagePostSerializer
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    queryset = PagePost.objects.all().order_by("-created_at")
+
+    # -----------------------
+    # CREATE PAGE POST
+    # -----------------------
+    def create(self, request, *args, **kwargs):
+
+        page_id = request.data.get("page")
+        content = request.data.get("content", "")
+        files = request.FILES.getlist("files")
+
+        if not page_id:
+            return Response(
+                {"detail": "page field is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        page = get_object_or_404(Page, id=page_id)
+
+        if page.owner != request.user:
+            return Response(
+                {"detail": "Only page owner can post"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        with transaction.atomic():
+
+            post = PagePost.objects.create(
+                page=page,
+                created_by=request.user,
+                content=content
+            )
+
+            for file in files:
+                PagePostMedia.objects.create(
+                    post=post,
+                    file=file
+                )
+
+        serializer = self.get_serializer(post, context={"request": request})
+
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    # -----------------------
+    # PAGE POSTS LIST
+    # -----------------------
+    def list(self, request):
+
+        page_id = request.query_params.get("page")
+
+        queryset = PagePost.objects.all()
+
+        if page_id:
+            queryset = queryset.filter(page_id=page_id)
+
+        queryset = queryset.select_related("page", "created_by") \
+            .prefetch_related("media") \
+            .order_by("-created_at")
+
+        serializer = self.get_serializer(
+            queryset,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+    # -----------------------
+    # DELETE POST (OWNER ONLY)
+    # -----------------------
+    def destroy(self, request, *args, **kwargs):
+
+        post = self.get_object()
+
+        if post.page.owner != request.user:
+            return Response(
+                {"detail": "You cannot delete this post"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        return super().destroy(request, *args, **kwargs)
+    
+
+    
+    @action(detail=False, methods=["get"])
+    def my_pages(self, request):
+
+        pages = Page.objects.filter(owner=request.user)
+
+        posts = PagePost.objects.filter(
+            page__in=pages
+        ).order_by("-created_at")
+
+        serializer = self.get_serializer(posts, many=True)
+
+        return Response(serializer.data)

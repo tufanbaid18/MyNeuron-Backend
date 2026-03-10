@@ -8,7 +8,7 @@ from .views import (
     update_education_detail, delete_education_detail, get_speakers, get_speaker_by_id, get_past_experiences, add_past_experience,
     update_past_experience, delete_past_experience, get_public_users, get_public_user_by_id, search_public_users, me, generate_qr_from_url,
     get_scientific_interest, update_scientific_interest, verify_email, resend_verification_email,
-    UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView,
+    UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView, PagePostViewSet, PageFollowViewSet, PageViewSet,
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet, FollowRequestViewSet, UserFollowViewSet,
     ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet, reset_password, forgot_password
@@ -38,6 +38,9 @@ router.register('usersfollow', UserFollowViewSet, basename='user-follows')
 router.register("articles", ArticleViewSet, basename="articles")
 router.register("article-references", ArticleReferenceViewSet, basename="article-references")
 router.register("article-ratings", ArticleRatingViewSet, basename="article-ratings")
+router.register("pages", PageViewSet, basename="pages")
+router.register("page-posts", PagePostViewSet, basename="page-posts")
+router.register("page-follow", PageFollowViewSet, basename="page-follow")
 
 app_name = 'accounts'
 
