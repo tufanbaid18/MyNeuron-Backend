@@ -191,13 +191,13 @@ AWS_QUERYSTRING_AUTH = True
 
 STORAGES = {
 
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-
     # "default": {
-    #     "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    #     "BACKEND": "django.core.files.storage.FileSystemStorage",
     # },
+
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
 
     "staticfiles": {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
