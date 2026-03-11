@@ -1143,7 +1143,7 @@ class FeedSerializer(serializers.Serializer):
 
     id = serializers.IntegerField()
     type = serializers.SerializerMethodField()
-    content = serializers.SerializerMethodField()
+    data = serializers.SerializerMethodField()
     created_at = serializers.DateTimeField()
 
     def get_type(self, obj):
@@ -1152,8 +1152,11 @@ class FeedSerializer(serializers.Serializer):
         if isinstance(obj, PagePost):
             return "page_post"
 
-    def get_content(self, obj):
+    def get_data(self, obj):
+        request = self.context.get("request")
+
         if isinstance(obj, Post):
-            return obj.content
+            return PostSerializer(obj, context={"request": request}).data
+
         if isinstance(obj, PagePost):
-            return obj.content
+            return PagePostSerializer(obj, context={"request": request}).data

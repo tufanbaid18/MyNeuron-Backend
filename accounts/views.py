@@ -1324,7 +1324,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
 
 class ProgramViewSet(viewsets.ModelViewSet):
-    queryset = Program.objects.all().order_by("-id")
+    queryset = Program.objects.all().order_by("date", "start_time")
     serializer_class = ProgramSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -2417,6 +2417,7 @@ class PageViewSet(viewsets.ModelViewSet):
 
     queryset = Page.objects.all().order_by("-created_at")
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser] 
 
     def get_serializer_class(self):
 
