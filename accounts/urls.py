@@ -9,7 +9,7 @@ from .views import (
     update_past_experience, delete_past_experience, get_public_users, get_public_user_by_id, search_public_users, me, generate_qr_from_url,
     get_scientific_interest, update_scientific_interest, verify_email, resend_verification_email,
     UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView, PagePostViewSet, PageFollowViewSet, PageViewSet,
-    ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet,
+    ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet, refresh_token,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet, FollowRequestViewSet, UserFollowViewSet,
     ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet, reset_password, forgot_password
 )
@@ -85,4 +85,5 @@ urlpatterns = [
     path("api/resend-verification/", resend_verification_email, name="resend-verification"),
     path("api/forgot-password/", forgot_password),
     path("api/reset-password/", reset_password),
+    path("api/refresh-token/", refresh_token, name="refresh_token"),
 ]

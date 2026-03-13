@@ -101,136 +101,6 @@ def get_tokens_for_user(user):
     }
 
 
-# @api_view(['POST'])
-# @permission_classes([AllowAny])
-# def api_register(request):
-#     serializer = UserSerializer(data=request.data)
-#     if serializer.is_valid():
-#         user = serializer.save()
-
-#         # 🔐 Create email verification token
-#         email_token = EmailVerificationToken.objects.create(user=user)
-
-#         verify_url = f"{settings.FRONTEND_URL}/verify-email?token={email_token.token}"
-
-#         html_message = f"""
-# <!DOCTYPE html>
-# <html>
-# <head>
-#   <meta charset="UTF-8" />
-#   <title>Verify Your Email</title>
-#   <style>
-#     body {{
-#       margin: 0;
-#       padding: 0;
-#       background-color: #f4f6f8;
-#       font-family: Arial, Helvetica, sans-serif;
-#     }}
-#     .container {{
-#       max-width: 600px;
-#       margin: 40px auto;
-#       background: #ffffff;
-#       border-radius: 8px;
-#       overflow: hidden;
-#       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-#     }}
-#     .header {{
-#       background: #70a83e;
-#       color: #ffffff;
-#       padding: 20px;
-#       text-align: center;
-#     }}
-#     .content {{
-#       padding: 30px;
-#       color: #333333;
-#       line-height: 1.6;
-#     }}
-#     .button {{
-#       display: inline-block;
-#       margin: 30px 0;
-#       padding: 14px 28px;
-#       background: #70a83e;
-#       color: #ffffff !important;
-#       text-decoration: none;
-#       border-radius: 6px;
-#       font-size: 16px;
-#       font-weight: bold;
-#     }}
-#     .footer {{
-#       background: #f0f2f5;
-#       text-align: center;
-#       padding: 15px;
-#       font-size: 12px;
-#       color: #777777;
-#     }}
-#   </style>
-# </head>
-# <body>
-#   <div class="container">
-#     <div class="header">
-#       <h1>Welcome to MyNeuron</h1>
-#     </div>
-
-#     <div class="content">
-#       <p>Hi <strong>{user.first_name}</strong>,</p>
-
-#       <p>
-#         Thank you for registering with <strong>MyNeuron</strong>.
-#         Please confirm your email address to activate your account.
-#       </p>
-
-#       <p style="text-align:center;">
-#         <a href="{verify_url}" class="button">Verify Email</a>
-#       </p>
-
-#       <p>
-#         If the button above does not work, copy and paste the following link into your browser:
-#       </p>
-
-#       <p style="word-break: break-all;">
-#         <a href="{verify_url}">{verify_url}</a>
-#       </p>
-
-#       <p>
-#         This verification link will expire in <strong>24 hours</strong>.
-#       </p>
-
-#       <p>
-#         If you did not create this account, you can safely ignore this email.
-#       </p>
-
-#       <p>
-#         Regards,<br />
-#         <strong>MyNeuron Team</strong>
-#       </p>
-#     </div>
-
-#     <div class="footer">
-#       © {now().year} MyNeuron. All rights reserved.
-#     </div>
-#   </div>
-# </body>
-# </html>
-# """
-
-#         # 📧 Send verification email
-#         send_mail(
-#             subject="Verify your email – MyNeuron",
-#             message=f"Verify your email: {verify_url}",  # fallback (plain text)
-#             from_email=settings.DEFAULT_FROM_EMAIL,
-#             recipient_list=[user.email],
-#             html_message=html_message,   # 👈 IMPORTANT
-#             fail_silently=False,
-#         )
-
-#         return Response(
-#             {
-#                 "message": "Registration successful. Please check your email to verify your account."
-#             },
-#             status=201
-#         )
-
-#     return Response(serializer.errors, status=400)
 
 def verification_email_html(user, verify_url):
     return f"""
@@ -364,6 +234,8 @@ def api_register(request):
 
 
 
+from rest_framework.response import Response
+
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def api_login(request):
@@ -381,18 +253,15 @@ def api_login(request):
     if not user.check_password(password):
         return Response({'detail': 'Invalid credentials'}, status=400)
 
-    # 🚫 BLOCK UNVERIFIED EMAILS
     if not user.is_email_verified:
         return Response(
             {'detail': 'Please verify your email before logging in.'},
             status=403
         )
-    
+
     tokens = get_tokens_for_user(user)
 
-    return Response({
-        'access': tokens['access'],
-        'refresh': tokens['refresh'],
+    response = Response({
         'user': {
             'id': user.id,
             'email': user.email,
@@ -406,6 +275,64 @@ def api_login(request):
         }
     })
 
+    # 🍪 ACCESS TOKEN COOKIE
+    response.set_cookie(
+        key="access_token",
+        value=tokens["access"],
+        httponly=True,
+        secure=True,        # False for localhost if needed
+        samesite="Lax",
+        max_age=60 * 60     # 1 hour
+    )
+
+    # 🍪 REFRESH TOKEN COOKIE
+    response.set_cookie(
+        key="refresh_token",
+        value=tokens["refresh"],
+        httponly=True,
+        secure=True,
+        samesite="Lax",
+        max_age=60 * 60 * 24 * 7   # 7 days
+    )
+
+    return response
+
+
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+
+@api_view(["POST"])
+def refresh_token(request):
+    refresh_token = request.COOKIES.get("refresh_token")
+
+    if not refresh_token:
+        return Response({"detail": "Refresh token missing"}, status=401)
+
+    try:
+        refresh = RefreshToken(refresh_token)
+        access_token = str(refresh.access_token)
+
+        response = Response({"message": "Token refreshed"})
+
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            secure=True,
+            samesite="None",
+            max_age=60 * 60   # 60 minutes
+        )
+
+        return response
+
+    except TokenError:
+        return Response({"detail": "Invalid refresh token"}, status=401)
+
+        
 
 @api_view(['POST'])
 @permission_classes([AllowAny])

@@ -135,8 +135,11 @@ FRONTEND_URL = config("FRONTEND_URL")
 
 
 REST_FRAMEWORK = {
+    # 'DEFAULT_AUTHENTICATION_CLASSES': (
+    #     'rest_framework_simplejwt.authentication.JWTAuthentication',
+    # ),
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.authentication.CookieJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticatedOrReadOnly',
@@ -150,7 +153,7 @@ REST_FRAMEWORK = {
 
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'AUTH_HEADER_TYPES': ('Bearer',),
     'ROTATE_REFRESH_TOKENS': True,
@@ -158,8 +161,23 @@ SIMPLE_JWT = {
 }
 
 
-# settings.py
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "https://www.myneuronworld.com",
+    "https://myneuronworld.com",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+
+SESSION_COOKIE_SAMESITE = "None"
+CSRF_COOKIE_SAMESITE = "None"
+
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+
 
 ENABLE_FIREBASE = True # ✅ turn ON only in production
 
@@ -180,6 +198,9 @@ AWS_S3_FILE_OVERWRITE = False
 AWS_DEFAULT_ACL = None
 AWS_QUERYSTRING_AUTH = True
 
+
+
+
 # AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
 
 # MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
@@ -188,6 +209,9 @@ AWS_QUERYSTRING_AUTH = True
 # MEDIA_ROOT = BASE_DIR / 'media'
 
 # DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+
+
+
 
 STORAGES = {
 
@@ -205,6 +229,8 @@ STORAGES = {
 }
 
 
+
+
 CSRF_TRUSTED_ORIGINS = [
     "https://api.myneuronworld.com",
     "https://api.myneuronworld.com:9006",
@@ -212,8 +238,6 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
