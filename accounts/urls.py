@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    api_register, api_login, api_event_register,
+    api_register, api_login,api_logout, api_event_register,
     upload_profile_image, get_personal_detail,
     update_personal_detail, get_professional_detail,
     update_professional_detail, add_comment, get_education_details, add_education_detail,
@@ -49,6 +49,7 @@ urlpatterns = [
     path('api/', include(router.urls)),
     path('api/register/', api_register),
     path('api/login/', api_login),
+    path('api/logout/', api_logout),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path("api/verify-email/", verify_email),
     path('api/event-register/', api_event_register),

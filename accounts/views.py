@@ -249,7 +249,7 @@ def api_login(request):
         key="access_token",
         value=tokens["access"],
         httponly=True,
-        secure=True,        # False for localhost if needed
+        secure=False,        # False for localhost if needed
         samesite="Lax",
         max_age=60 * 60     # 1 hour
     )
@@ -259,10 +259,20 @@ def api_login(request):
         key="refresh_token",
         value=tokens["refresh"],
         httponly=True,
-        secure=True,
+        secure=False,
         samesite="Lax",
         max_age=60 * 60 * 24 * 7   # 7 days
     )
+
+    return response
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def api_logout(request):
+    response = Response({"message": "Logged out successfully"})
+
+    response.delete_cookie("access_token")
+    response.delete_cookie("refresh_token")
 
     return response
 
@@ -270,8 +280,9 @@ def api_login(request):
 
 
 
-
 @api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
 @authentication_classes([])
 @permission_classes([AllowAny])
 def refresh_token(request):
