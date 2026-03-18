@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     User, Page, PagePost, PageFollow, PagePostMedia, Event, Member, PersonalDetail, ProfessionalDetail, Post, PostMedia, Education,
     CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program, 
-    Article, ArticleSection, ArticleFigure, ArticleKeyword, ArticleKeywordMap, ArticleReference, ArticleRating
+    Article, ArticleSection, ArticleFigure, ArticleKeyword, ArticleKeywordMap, ArticleReference, ArticleRating, Registration, PaymentAttempt, ManualPayment
 )
 from .validators import validate_email, validate_password_complexity
 from django.utils import timezone
@@ -1160,3 +1160,17 @@ class FeedSerializer(serializers.Serializer):
 
         if isinstance(obj, PagePost):
             return PagePostSerializer(obj, context={"request": request}).data
+        
+
+
+class RegistrationSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Registration
+        fields = "__all__"
+
+class ManualPaymentSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = ManualPayment
+        fields = ["transaction_id", "screenshot"]

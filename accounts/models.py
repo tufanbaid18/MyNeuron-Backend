@@ -1076,3 +1076,78 @@ class PagePostMedia(models.Model):
             self.is_video = False
 
         super().save(*args, **kwargs)
+
+
+
+class Registration(models.Model):
+
+    STATUS_CHOICES = [
+        ("PENDING_PAYMENT", "Pending Payment"),
+        ("PAID", "Paid"),
+        ("MANUAL_PENDING", "Manual Pending"),
+        ("MANUAL_VERIFIED", "Manual Verified"),
+        ("FAILED", "Failed"),
+    ]
+
+    name = models.CharField(max_length=200)
+    email = models.EmailField()
+
+    amount = models.IntegerField()
+
+    status = models.CharField(
+        max_length=30,
+        choices=STATUS_CHOICES,
+        default="PENDING_PAYMENT"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class PaymentAttempt(models.Model):
+
+    STATUS_CHOICES = [
+        ("CREATED", "Created"),
+        ("SUCCESS", "Success"),
+        ("FAILED", "Failed"),
+    ]
+
+    registration = models.ForeignKey(
+        Registration,
+        on_delete=models.CASCADE,
+        related_name="payment_attempts"
+    )
+
+    razorpay_order_id = models.CharField(max_length=200)
+    razorpay_payment_id = models.CharField(max_length=200, blank=True, null=True)
+
+    amount = models.IntegerField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="CREATED"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class ManualPayment(models.Model):
+
+    registration = models.OneToOneField(
+        Registration,
+        on_delete=models.CASCADE
+    )
+
+    transaction_id = models.CharField(max_length=200)
+
+    screenshot = models.ImageField(upload_to="manual_payments/")
+
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ("PENDING", "Pending"),
+            ("VERIFIED", "Verified"),
+            ("REJECTED", "Rejected")
+        ],
+        default="PENDING"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)

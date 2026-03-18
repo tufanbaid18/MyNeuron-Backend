@@ -7,11 +7,11 @@ from .views import (
     update_professional_detail, add_comment, get_education_details, add_education_detail,
     update_education_detail, delete_education_detail, get_speakers, get_speaker_by_id, get_past_experiences, add_past_experience,
     update_past_experience, delete_past_experience, get_public_users, get_public_user_by_id, search_public_users, me, generate_qr_from_url,
-    get_scientific_interest, update_scientific_interest, verify_email, resend_verification_email,
+    get_scientific_interest, update_scientific_interest, verify_email, resend_verification_email, razorpay_webhook, verify_payment, create_payment_order,
     UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView, PagePostViewSet, PageFollowViewSet, PageViewSet,
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet, refresh_token,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet, FollowRequestViewSet, UserFollowViewSet,
-    ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet, reset_password, forgot_password
+    ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet, reset_password, forgot_password, create_registration, upload_manual_payment,
 )
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
@@ -86,4 +86,9 @@ urlpatterns = [
     path("api/forgot-password/", forgot_password),
     path("api/reset-password/", reset_password),
     path("api/refresh-token/", refresh_token, name="refresh_token"),
+    path("api/registrations/", create_registration, name="create_registration"),
+    path("api/create-order/<int:registration_id>/", create_payment_order),
+    path("api/verify-payment/", verify_payment),
+    path("api/manual-payment/", upload_manual_payment, name="manual_payment"),
+    path("api/razorpay-webhook/", razorpay_webhook),
 ]

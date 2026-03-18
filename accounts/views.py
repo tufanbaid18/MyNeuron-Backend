@@ -1,5 +1,5 @@
 from rest_framework import viewsets, permissions, status, filters
-from rest_framework.decorators import api_view, permission_classes, action
+from rest_framework.decorators import api_view, permission_classes, action, authentication_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -12,9 +12,9 @@ from .models import PasswordResetToken, FollowRequest, Event, Member, User, Pers
 from .forms import RegisterForm
 from .models import ArticleRating, Page, PageFollow, PagePost, PagePostMedia
 from .serializers import ArticleRatingSerializer, PageFollowSerializer, PagePostSerializer, FeedSerializer, PageDetailSerializer, PageSerializer
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.core.files.base import ContentFile
-import base64, uuid
+import base64, uuid, hmac, hashlib, json, qrcode, re, feedparser, requests
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db import transaction
@@ -28,51 +28,19 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from .s3 import presigned_url
+from io import BytesIO
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+from .models import Registration, PaymentAttempt, ManualPayment
+from .serializers import ManualPaymentSerializer, RegistrationSerializer
+from .utils.razorpay_client import razorpay_client
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework.viewsets import ModelViewSet
+from datetime import datetime
+from bs4 import BeautifulSoup
+from rest_framework.views import APIView
 
 
-
-# # Web registration
-# def register_view(request):
-#     if request.method == 'POST':
-#         form = RegisterForm(request.POST, request.FILES)
-#         if form.is_valid():
-#             form.save()
-#             messages.success(request, 'Registration successful! Please log in.')
-#             return redirect('login')
-#     else:
-#         form = RegisterForm()
-#     return render(request, 'accounts/register.html', {'form': form})
-
-# # Home page
-# @login_required
-# def home(request):
-#     return render(request, 'accounts/home.html', {'user': request.user})
-
-# # Event registration (web)
-# @login_required
-# def event_register_view(request):
-
-#     events = Event.objects.all()
-#     if request.method == 'POST':
-#         event_id = request.POST.get('event')
-#         role = request.POST.get('role')
-#         try:
-#             event = Event.objects.get(id=event_id)
-#         except Event.DoesNotExist:
-#             messages.error(request, 'Selected event does not exist')
-#             return redirect('accounts:event_register')
-#         # prevent duplicates
-#         if Member.objects.filter(user=request.user, event=event, role=role).exists():
-#             messages.warning(request, 'You are already registered for this event with the same role')
-#         else:
-#             Member.objects.create(user=request.user, event=event, role=role)
-#             messages.success(request, 'Successfully registered for the event')
-#         return redirect('accounts:home')
-#     return render(request, 'accounts/event_register.html', {'events': events})
-
-# def logout_view(request):
-#     logout(request)
-#     return redirect('registration:login')
 
 
 # API views and viewsets
@@ -152,6 +120,7 @@ def verification_email_html(user, verify_url):
 
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def api_register(request):
     email = request.data.get("email")
@@ -234,9 +203,9 @@ def api_register(request):
 
 
 
-from rest_framework.response import Response
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def api_login(request):
     email = request.data.get('email')
@@ -299,13 +268,12 @@ def api_login(request):
 
 
 
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+
 
 
 @api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
 def refresh_token(request):
     refresh_token = request.COOKIES.get("refresh_token")
 
@@ -323,8 +291,8 @@ def refresh_token(request):
             value=access_token,
             httponly=True,
             secure=True,
-            samesite="None",
-            max_age=60 * 60   # 60 minutes
+            samesite="Lax",
+            max_age=60 * 60
         )
 
         return response
@@ -335,6 +303,7 @@ def refresh_token(request):
         
 
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def verify_email(request):
     token = request.data.get("token")
@@ -365,17 +334,10 @@ def verify_email(request):
 
 
 
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from django.conf import settings
-from django.core.mail import send_mail
-from django.utils.timezone import now
-
-from .models import User, EmailVerificationToken
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def resend_verification_email(request):
     email = request.data.get("email")
@@ -482,6 +444,7 @@ def password_reset_email_html(user, reset_url):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def forgot_password(request):
     serializer = ForgotPasswordSerializer(data=request.data)
@@ -512,6 +475,7 @@ def forgot_password(request):
 
 
 @api_view(["POST"])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def reset_password(request):
     serializer = ResetPasswordSerializer(data=request.data)
@@ -603,14 +567,6 @@ def api_event_register(request):
 
 
     
-
-
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from rest_framework import status
-from django.core.files.base import ContentFile
-import base64, uuid
 
 
 
@@ -1019,8 +975,6 @@ def get_public_user_by_id(request, id):
     return Response(serializer.data)
 
 
-from django.db.models import Q
-from rest_framework.permissions import AllowAny
 
 @api_view(["GET"])
 @permission_classes([AllowAny])
@@ -1270,12 +1224,6 @@ class ProgramViewSet(viewsets.ModelViewSet):
 
 
 
-from django.db.models import Q
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-
 class MessageViewSet(viewsets.ModelViewSet):
     serializer_class = MessageSerializer
     permission_classes = [IsAuthenticated]
@@ -1496,9 +1444,7 @@ class FolderViewSet(viewsets.ModelViewSet):
         folder.save()
         return Response({"message": "Folder moved successfully"})
 
-    # ------------------------------
-    # DELETE folder is already built-in (DELETE /folders/<id>/)
-    # ------------------------------
+
 
 
 
@@ -1550,7 +1496,7 @@ class FolderItemViewSet(viewsets.ModelViewSet):
             return Response({"error": "Invalid folder"}, status=400)
 
 
-from rest_framework.viewsets import ModelViewSet
+
 
 class CalendarEventViewSet(ModelViewSet):
     serializer_class = CalendarEventSerializer
@@ -1565,11 +1511,6 @@ class CalendarEventViewSet(ModelViewSet):
 
         
 
-import feedparser
-from rest_framework.response import Response
-from rest_framework.views import APIView
-import re
-from datetime import datetime
 
 
 
@@ -1640,11 +1581,8 @@ class ResearchNewsAPIView(APIView):
         return Response(news_items[:10])
 
 
-import requests
-from bs4 import BeautifulSoup
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+
+
 
 class OpenGraphMetaAPIView(APIView):
     def post(self, request):
@@ -1684,15 +1622,6 @@ class OpenGraphMetaAPIView(APIView):
             )
 
 
-
-import json
-import qrcode
-import base64
-from io import BytesIO
-
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
 
 
 @csrf_exempt
@@ -2580,3 +2509,164 @@ class PagePostViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(posts, many=True)
 
         return Response(serializer.data)
+
+
+@api_view(["POST"])
+def create_registration(request):
+
+    serializer = RegistrationSerializer(data=request.data)
+
+    if serializer.is_valid():
+        registration = serializer.save()
+
+        return Response(
+            RegistrationSerializer(registration).data,
+            status=status.HTTP_201_CREATED
+        )
+
+    return Response(serializer.errors, status=400)
+
+@api_view(["POST"])
+def create_payment_order(request, registration_id):
+
+    try:
+        registration = Registration.objects.get(id=registration_id)
+    except Registration.DoesNotExist:
+        return Response({"error": "Registration not found"}, status=404)
+
+    attempts = PaymentAttempt.objects.filter(
+        registration=registration
+    ).count()
+
+    if attempts >= 2:
+        return Response(
+            {"error": "Maximum payment attempts reached"},
+            status=400
+        )
+
+    order = razorpay_client.order.create({
+        "amount": registration.amount * 100,
+        "currency": "INR",
+        "payment_capture": 1
+    })
+
+    attempt = PaymentAttempt.objects.create(
+        registration=registration,
+        razorpay_order_id=order["id"],
+        amount=registration.amount
+    )
+
+    return Response({
+        "order_id": order["id"],
+        "amount": registration.amount
+    })
+
+@api_view(["POST"])
+def verify_payment(request):
+
+    order_id = request.data.get("razorpay_order_id")
+    payment_id = request.data.get("razorpay_payment_id")
+    signature = request.data.get("razorpay_signature")
+
+    generated_signature = hmac.new(
+        settings.RAZORPAY_KEY_SECRET.encode(),
+        f"{order_id}|{payment_id}".encode(),
+        hashlib.sha256
+    ).hexdigest()
+
+    attempt = PaymentAttempt.objects.get(
+        razorpay_order_id=order_id
+    )
+
+    if generated_signature == signature:
+
+        attempt.status = "SUCCESS"
+        attempt.razorpay_payment_id = payment_id
+        attempt.save()
+
+        registration = attempt.registration
+        registration.status = "PAID"
+        registration.save()
+
+        return Response({"message": "Payment successful"})
+
+    else:
+
+        attempt.status = "FAILED"
+        attempt.save()
+
+        return Response({"error": "Invalid signature"}, status=400)
+    
+@api_view(["POST"])
+def upload_manual_payment(request):
+
+    registration_id = request.data.get("registration")
+
+    try:
+        registration = Registration.objects.get(id=registration_id)
+    except Registration.DoesNotExist:
+        return Response(
+            {"error": "Registration not found"},
+            status=404
+        )
+
+    # ❗ prevent invalid state
+    if registration.status != "PENDING_PAYMENT":
+        return Response(
+            {"error": "Manual payment not allowed"},
+            status=400
+        )
+
+    # ❗ prevent duplicate
+    if ManualPayment.objects.filter(registration=registration).exists():
+        return Response(
+            {"error": "Manual payment already submitted"},
+            status=400
+        )
+
+    serializer = ManualPaymentSerializer(data=request.data)
+
+    if serializer.is_valid():
+        serializer.save(registration=registration)
+
+        registration.status = "MANUAL_PENDING"
+        registration.save()
+
+        return Response(serializer.data, status=201)
+
+    return Response(serializer.errors, status=400)
+
+@csrf_exempt
+def razorpay_webhook(request):
+
+    payload = request.body
+    signature = request.headers.get("X-Razorpay-Signature")
+
+    # try:
+    #     razorpay_client.utility.verify_webhook_signature(
+    #         payload,
+    #         signature,
+    #         settings.RAZORPAY_WEBHOOK_SECRET
+    #     )
+    # except:
+    #     return HttpResponse(status=400)
+
+    data = json.loads(payload)
+
+    if data["event"] == "payment.captured":
+
+        order_id = data["payload"]["payment"]["entity"]["order_id"]
+
+        attempt = PaymentAttempt.objects.get(
+            razorpay_order_id=order_id
+        )
+
+        attempt.status = "SUCCESS"
+        attempt.save()
+
+        registration = attempt.registration
+        registration.status = "PAID"
+        registration.save()
+
+    return HttpResponse(status=200)
+
