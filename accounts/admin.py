@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, Event, Member,  Post, PostMedia, Like, Bookmark, Comment, HandshakeRequest, Program
-from .models import PersonalDetail, Education, ProfessionalDetail, Notification
+from .models import User, Event, Member, Program, EventCategoryPricing
+
 
 
 @admin.register(User)
@@ -35,8 +35,19 @@ class UserAdmin(BaseUserAdmin):
         }),
     )
 
-admin.site.register(Event)
+
+class EventCategoryPricingInline(admin.TabularInline):
+    model = EventCategoryPricing
+    extra = 1
+
+
+@admin.register(Event)
+class EventAdmin(admin.ModelAdmin):
+    list_display = ("id", "name")
+    inlines = [EventCategoryPricingInline]
+
 admin.site.register(Member)
+
 @admin.register(Program)
 class ProgramAdmin(admin.ModelAdmin):
     list_display = ("id", "event", "speaker", "venue", "topic", "date", "start_time", "end_time")

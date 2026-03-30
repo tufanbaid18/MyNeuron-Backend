@@ -2522,6 +2522,7 @@ class PagePostViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+
 @api_view(["POST"])
 def create_registration(request):
 
@@ -2549,9 +2550,26 @@ def create_payment_order(request, registration_id):
         registration=registration
     ).count()
 
+    if registration.status != "PENDING_PAYMENT":
+        return Response(
+            {"error": "Payment already processed or not allowed"},
+            status=400
+        )
+    
+    if registration.status == "PAID":
+        return Response(
+            {"error": "Already paid"},
+            status=400
+        )
+
     if attempts >= 2:
         return Response(
             {"error": "Maximum payment attempts reached"},
+            status=400
+        )
+    if registration.amount <= 0:
+        return Response(
+            {"error": "Invalid amount"},
             status=400
         )
 
@@ -2569,7 +2587,9 @@ def create_payment_order(request, registration_id):
 
     return Response({
         "order_id": order["id"],
-        "amount": registration.amount
+        "amount": registration.amount,
+        "event": registration.event.name,
+        "category": registration.pricing.category
     })
 
 @api_view(["POST"])
@@ -2579,15 +2599,25 @@ def verify_payment(request):
     payment_id = request.data.get("razorpay_payment_id")
     signature = request.data.get("razorpay_signature")
 
+    if not order_id or not payment_id or not signature:
+            return Response({"error": "Missing fields"}, status=400)
+    
+
     generated_signature = hmac.new(
         settings.RAZORPAY_KEY_SECRET.encode(),
         f"{order_id}|{payment_id}".encode(),
         hashlib.sha256
     ).hexdigest()
 
-    attempt = PaymentAttempt.objects.get(
-        razorpay_order_id=order_id
-    )
+    try:
+        attempt = PaymentAttempt.objects.get(
+            razorpay_order_id=order_id
+        )
+    except PaymentAttempt.DoesNotExist:
+        return Response({"error": "Invalid order"}, status=400)
+    
+    if attempt.status == "SUCCESS":
+        return Response({"message": "Already verified"})
 
     if generated_signature == signature:
 
@@ -2653,14 +2683,14 @@ def razorpay_webhook(request):
     payload = request.body
     signature = request.headers.get("X-Razorpay-Signature")
 
-    # try:
-    #     razorpay_client.utility.verify_webhook_signature(
-    #         payload,
-    #         signature,
-    #         settings.RAZORPAY_WEBHOOK_SECRET
-    #     )
-    # except:
-    #     return HttpResponse(status=400)
+    try:
+        razorpay_client.utility.verify_webhook_signature(
+            payload,
+            signature,
+            settings.RAZORPAY_WEBHOOK_SECRET
+        )
+    except:
+        return HttpResponse(status=400)
 
     data = json.loads(payload)
 
@@ -2668,9 +2698,12 @@ def razorpay_webhook(request):
 
         order_id = data["payload"]["payment"]["entity"]["order_id"]
 
-        attempt = PaymentAttempt.objects.get(
-            razorpay_order_id=order_id
-        )
+        try:
+            attempt = PaymentAttempt.objects.get(
+                razorpay_order_id=order_id
+            )
+        except PaymentAttempt.DoesNotExist:
+            return HttpResponse(status=400)
 
         attempt.status = "SUCCESS"
         attempt.save()

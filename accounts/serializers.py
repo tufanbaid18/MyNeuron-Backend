@@ -2,7 +2,7 @@ from rest_framework import serializers
 from .models import (
     User, Page, PagePost, PageFollow, PagePostMedia, Event, Member, PersonalDetail, ProfessionalDetail, Post, PostMedia, Education,
     CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program, 
-    Article, ArticleSection, ArticleFigure, ArticleKeyword, ArticleKeywordMap, ArticleReference, ArticleRating, Registration, PaymentAttempt, ManualPayment
+    Article, ArticleSection, ArticleFigure, ArticleKeyword, ArticleKeywordMap, ArticleReference, ArticleRating, Registration, PaymentAttempt, ManualPayment, EventCategoryPricing
 )
 from .validators import validate_email, validate_password_complexity
 from django.utils import timezone
@@ -207,6 +207,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "first_name",
             "middle_name",
             "last_name",
+            "is_verified",
+            "is_verified_lite",
             "title",
             "profile_title",
             "profile_image",
@@ -326,14 +328,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     
 
+class EventCategoryPricingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventCategoryPricing
+        fields = ['id', 'category', 'price']
 
-# -------------------------------
-# 🔹 EVENT & MEMBER SERIALIZERS
-# -------------------------------
+
 class EventSerializer(serializers.ModelSerializer):
+    pricing = EventCategoryPricingSerializer(many=True, read_only=True)
+
     class Meta:
         model = Event
-        fields = ['id', 'name']
+        fields = ['id', 'name', 'pricing']
 
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -1168,6 +1174,32 @@ class RegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Registration
         fields = "__all__"
+        read_only_fields = ["amount", "status"]
+
+    def validate(self, data):
+        event = data.get("event")
+        pricing = data.get("pricing")
+
+        if not pricing.is_active:
+            raise serializers.ValidationError("Pricing not active")
+
+        # ✅ Ensure pricing belongs to selected event
+        if pricing.event != event:
+            raise serializers.ValidationError(
+                "Selected pricing does not belong to this event"
+            )
+
+        return data
+
+    def create(self, validated_data):
+        pricing = validated_data.get("pricing")
+
+        # ✅ Auto set amount
+        validated_data["amount"] = pricing.price
+
+        return super().create(validated_data)
+    
+
 
 class ManualPaymentSerializer(serializers.ModelSerializer):
 

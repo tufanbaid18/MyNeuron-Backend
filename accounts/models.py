@@ -75,6 +75,24 @@ class Event(models.Model):
         return f"{self.id} - {self.name}"
     
 
+class EventCategoryPricing(models.Model):
+    event = models.ForeignKey(
+        Event,
+        on_delete=models.CASCADE,
+        related_name="pricing"
+    )
+    category = models.CharField(max_length=100)  # free text
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('event', 'category')  # avoid duplicate categories per event
+
+    def __str__(self):
+        return f"{self.event.name} - {self.category} - ₹{self.price}"
+
+        
 
 
 class Member(models.Model):
@@ -1092,6 +1110,11 @@ class Registration(models.Model):
     name = models.CharField(max_length=200)
     email = models.EmailField()
 
+    # ✅ ADD THESE TWO
+    event = models.ForeignKey(Event, on_delete=models.CASCADE)
+    pricing = models.ForeignKey(EventCategoryPricing, on_delete=models.CASCADE)
+
+    # ✅ KEEP but auto-fill
     amount = models.IntegerField()
 
     status = models.CharField(
