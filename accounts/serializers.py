@@ -8,6 +8,7 @@ from .validators import validate_email, validate_password_complexity
 from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from .s3 import presigned_url
+from django.db import transaction
 
 
 # -------------------------------
@@ -193,6 +194,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
     professional_detail = ProfessionalDetailSerializer(required=False)
     education = EducationSerializer(many=True, required=False)
     scientific_interest = ScientificInterestSerializer(required=False)
+
+    registered_events = serializers.SerializerMethodField()
+
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
 
@@ -216,6 +220,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "professional_detail",
             "education",
             "scientific_interest",
+            "registered_events",
             "followers_count",
             "following_count",
             "is_following",
@@ -266,6 +271,28 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
         return fr.status if fr else "none"
     
+    
+    def get_registered_events(self, obj):
+        registrations = Registration.objects.filter(user=obj).select_related(
+            "event", "pricing"
+        ).prefetch_related("manualpayment")
+
+        data = []
+
+        for reg in registrations:
+            manual_payment = getattr(reg, "manualpayment", None)
+
+            data.append({
+                "event_id": reg.event.id,
+                "event_name": reg.event.name,
+                "category": reg.pricing.category,
+                "pricing": reg.amount,
+                "payment_status": reg.status,
+                "manual_payment_status": manual_payment.status if manual_payment else None
+            })
+
+        return data
+
 
     def update(self, instance, validated_data):
         personal_data = validated_data.pop("personal_detail", {})
@@ -1174,7 +1201,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Registration
         fields = "__all__"
-        read_only_fields = ["amount", "status"]
+        read_only_fields = ["amount", "status", "user", "email", "name"]
 
     def validate(self, data):
         event = data.get("event")
@@ -1183,7 +1210,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
         if not pricing.is_active:
             raise serializers.ValidationError("Pricing not active")
 
-        # ✅ Ensure pricing belongs to selected event
         if pricing.event != event:
             raise serializers.ValidationError(
                 "Selected pricing does not belong to this event"
@@ -1192,12 +1218,41 @@ class RegistrationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        pricing = validated_data.get("pricing")
+        with transaction.atomic():
+            request = self.context.get("request")
+            user = request.user
 
-        # ✅ Auto set amount
-        validated_data["amount"] = pricing.price
+            event = validated_data.get("event")
+            pricing = validated_data.get("pricing")
 
-        return super().create(validated_data)
+            existing = Registration.objects.select_for_update().filter(
+                user=user,
+                event=event
+            ).first()
+
+            if existing:
+
+                if existing.status == "PAID":
+                    raise serializers.ValidationError(
+                        "You have already paid for this event"
+                    )
+
+                if existing.pricing == pricing:
+                    return existing
+
+                existing.pricing = pricing
+                existing.amount = pricing.price
+                existing.status = "PENDING_PAYMENT"
+                existing.save()
+
+                return existing
+
+            validated_data["user"] = user
+            validated_data["email"] = user.email
+            validated_data["name"] = f"{user.first_name} {user.last_name}"
+            validated_data["amount"] = pricing.price
+
+            return super().create(validated_data)
     
 
 
@@ -1206,3 +1261,8 @@ class ManualPaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManualPayment
         fields = ["transaction_id", "screenshot"]
+
+    def validate_transaction_id(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Transaction ID is required")
+        return value

@@ -2526,14 +2526,20 @@ class PagePostViewSet(viewsets.ModelViewSet):
 @api_view(["POST"])
 def create_registration(request):
 
-    serializer = RegistrationSerializer(data=request.data)
+    serializer = RegistrationSerializer(
+        data=request.data,
+        context={"request": request}
+    )
 
     if serializer.is_valid():
         registration = serializer.save()
 
         return Response(
-            RegistrationSerializer(registration).data,
-            status=status.HTTP_201_CREATED
+            {
+                "message": "Registration processed",
+                "data": RegistrationSerializer(registration).data
+            },
+            status=201
         )
 
     return Response(serializer.errors, status=400)
@@ -2546,33 +2552,59 @@ def create_payment_order(request, registration_id):
     except Registration.DoesNotExist:
         return Response({"error": "Registration not found"}, status=404)
 
+    # 🔢 Count failed attempts
     attempts = PaymentAttempt.objects.filter(
-        registration=registration
+        registration=registration,
+        status__in=["FAILED", "EXPIRED"]
     ).count()
 
+    # ❌ Already paid
+    if registration.status == "PAID":
+        return Response({"error": "Already paid"}, status=400)
+
+    # ❌ Not allowed state
     if registration.status != "PENDING_PAYMENT":
         return Response(
             {"error": "Payment already processed or not allowed"},
             status=400
         )
-    
-    if registration.status == "PAID":
-        return Response(
-            {"error": "Already paid"},
-            status=400
-        )
 
-    if attempts >= 2:
+    # ❌ Max retry limit
+    if attempts >= 3:
         return Response(
             {"error": "Maximum payment attempts reached"},
             status=400
         )
+
+    # ❌ Invalid amount
     if registration.amount <= 0:
         return Response(
             {"error": "Invalid amount"},
             status=400
         )
 
+    # ✅ Expire old CREATED attempt (older than 15 mins)
+    PaymentAttempt.objects.filter(
+        registration=registration,
+        status="CREATED",
+        created_at__lt=timezone.now() - timedelta(minutes=15)
+    ).update(status="EXPIRED")
+
+
+    existing_attempt = PaymentAttempt.objects.filter(
+        registration=registration,
+        status="CREATED"
+    ).first()
+
+    if existing_attempt:
+        return Response({
+            "order_id": existing_attempt.razorpay_order_id,
+            "amount": registration.amount,
+            "event": registration.event.name,
+            "category": registration.pricing.category
+        })
+
+    # ✅ Create new order ONLY if no existing CREATED attempt
     order = razorpay_client.order.create({
         "amount": registration.amount * 100,
         "currency": "INR",
@@ -2591,6 +2623,8 @@ def create_payment_order(request, registration_id):
         "event": registration.event.name,
         "category": registration.pricing.category
     })
+
+
 
 @api_view(["POST"])
 def verify_payment(request):
@@ -2668,12 +2702,15 @@ def upload_manual_payment(request):
     serializer = ManualPaymentSerializer(data=request.data)
 
     if serializer.is_valid():
-        serializer.save(registration=registration)
+        serializer.save(registration=registration)  
+        # ✅ This will automatically set:
+        # ManualPayment.status = PENDING
+        # Registration.status = MANUAL_PENDING (via save())
 
-        registration.status = "MANUAL_PENDING"
-        registration.save()
-
-        return Response(serializer.data, status=201)
+        return Response({
+            "message": "Manual payment submitted successfully",
+            "data": serializer.data
+        }, status=201)
 
     return Response(serializer.errors, status=400)
 
@@ -2685,18 +2722,22 @@ def razorpay_webhook(request):
 
     try:
         razorpay_client.utility.verify_webhook_signature(
-            payload,
+            payload.decode("utf-8"),
             signature,
             settings.RAZORPAY_WEBHOOK_SECRET
         )
-    except:
-        return HttpResponse(status=400)
+    except Exception as err:
+        print(err)
+        return HttpResponse(status=400, reason=err)
 
     data = json.loads(payload)
 
     if data["event"] == "payment.captured":
 
-        order_id = data["payload"]["payment"]["entity"]["order_id"]
+        payment_entity = data["payload"]["payment"]["entity"]
+
+        order_id = payment_entity["order_id"]
+        payment_id = payment_entity["id"]
 
         try:
             attempt = PaymentAttempt.objects.get(
@@ -2705,12 +2746,41 @@ def razorpay_webhook(request):
         except PaymentAttempt.DoesNotExist:
             return HttpResponse(status=400)
 
-        attempt.status = "SUCCESS"
-        attempt.save()
+        except Exception as err:
+            print(err)
+            return HttpResponse(status=400, reason=err)
+        
+        if attempt.status != "SUCCESS":
+            attempt.status = "SUCCESS"
+            attempt.razorpay_payment_id = payment_id   # ✅ ADD THIS
+            attempt.save()
 
-        registration = attempt.registration
-        registration.status = "PAID"
-        registration.save()
+            registration = attempt.registration
 
+            if registration.status != "PAID":
+                registration.status = "PAID"
+                registration.save()
+
+    elif data["event"] == "payment.failed":
+
+        payment_entity = data["payload"]["payment"]["entity"]
+
+        order_id = payment_entity.get("order_id")
+
+        if order_id:
+            try:
+                attempt = PaymentAttempt.objects.get(
+                    razorpay_order_id=order_id
+                )
+
+                # ❗ Don't overwrite success
+                if attempt.status != "SUCCESS":
+                    attempt.status = "FAILED"
+                    attempt.save()
+
+            except PaymentAttempt.DoesNotExist:
+                pass
+
+            
     return HttpResponse(status=200)
 

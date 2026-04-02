@@ -1106,7 +1106,7 @@ class Registration(models.Model):
         ("MANUAL_VERIFIED", "Manual Verified"),
         ("FAILED", "Failed"),
     ]
-
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=200)
     email = models.EmailField()
 
@@ -1125,12 +1125,14 @@ class Registration(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
+
 class PaymentAttempt(models.Model):
 
     STATUS_CHOICES = [
         ("CREATED", "Created"),
         ("SUCCESS", "Success"),
         ("FAILED", "Failed"),
+        ("EXPIRED", "Expired"),
     ]
 
     registration = models.ForeignKey(
@@ -1153,14 +1155,12 @@ class PaymentAttempt(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 class ManualPayment(models.Model):
-
     registration = models.OneToOneField(
         Registration,
         on_delete=models.CASCADE
     )
 
     transaction_id = models.CharField(max_length=200)
-
     screenshot = models.ImageField(upload_to="manual_payments/")
 
     status = models.CharField(
@@ -1174,3 +1174,18 @@ class ManualPayment(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        # 🔥 AUTO SYNC REGISTRATION
+        if self.status == "PENDING":
+            self.registration.status = "MANUAL_PENDING"
+
+        elif self.status == "VERIFIED":
+            self.registration.status = "MANUAL_VERIFIED"
+
+        elif self.status == "REJECTED":
+            self.registration.status = "PENDING_PAYMENT"
+
+        self.registration.save()

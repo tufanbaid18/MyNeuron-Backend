@@ -91,5 +91,5 @@ urlpatterns = [
     path("api/create-order/<int:registration_id>/", create_payment_order),
     path("api/verify-payment/", verify_payment),
     path("api/manual-payment/", upload_manual_payment, name="manual_payment"),
-    path("api/razorpay-webhook/", razorpay_webhook),
+    path("api/payment/gatc/webhook", razorpay_webhook),
 ]
