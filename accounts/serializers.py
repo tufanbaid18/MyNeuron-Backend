@@ -1266,3 +1266,37 @@ class ManualPaymentSerializer(serializers.ModelSerializer):
         if not value.strip():
             raise serializers.ValidationError("Transaction ID is required")
         return value
+
+
+
+class PublicUserEventSerializer(serializers.Serializer):
+
+    user_id = serializers.IntegerField()
+    event_id = serializers.IntegerField()
+
+    def to_representation(self, instance):
+        user = instance["user"]
+        registration = instance["registration"]
+        manual_payment = instance.get("manual_payment")
+        latest_attempt = instance.get("latest_attempt")
+
+        return {
+            "user": {
+                "id": user.id,
+                "name": f"{user.first_name} {user.last_name}",
+                "email": user.email,
+                "profile_image": presigned_url(user.profile_image.name) if user.profile_image else None,
+                "profile_title": user.profile_title,
+            },
+            "event": {
+                "event_id": registration.event.id,
+                "event_name": registration.event.name,
+                "category": registration.pricing.category,
+                "pricing": registration.amount,
+            },
+            "payment": {
+                "status": registration.status,
+                "manual_payment_status": manual_payment.status if manual_payment else None,
+                "last_attempt_status": latest_attempt.status if latest_attempt else None,
+            }
+        }

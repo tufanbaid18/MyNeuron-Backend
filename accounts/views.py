@@ -7,7 +7,7 @@ from django.contrib.auth import logout
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer, FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer 
+from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer, FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer, PublicUserEventSerializer 
 from .models import PasswordResetToken, FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken, Article, ArticleReference
 from .forms import RegisterForm
 from .models import ArticleRating, Page, PageFollow, PagePost, PagePostMedia
@@ -2593,7 +2593,7 @@ def create_payment_order(request, registration_id):
     PaymentAttempt.objects.filter(
         registration=registration,
         status="CREATED",
-        created_at__lt=timezone.now() - timedelta(minutes=15)
+        created_at__lt=timezone.now() - timedelta(minutes=1)
     ).update(status="EXPIRED")
 
 
@@ -2790,3 +2790,43 @@ def razorpay_webhook(request):
             
     return HttpResponse(status=200)
 
+
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])  # ✅ Public API
+def public_user_event_detail(request):
+
+    user_id = request.query_params.get("user_id")
+    event_id = request.query_params.get("event_id")
+
+    if not user_id or not event_id:
+        return Response(
+            {"error": "user_id and event_id are required"},
+            status=400
+        )
+
+    try:
+        registration = Registration.objects.select_related(
+            "user", "event", "pricing"
+        ).get(user_id=user_id, event_id=event_id)
+    except Registration.DoesNotExist:
+        return Response(
+            {"error": "Registration not found"},
+            status=404
+        )
+
+    manual_payment = getattr(registration, "manualpayment", None)
+
+    latest_attempt = registration.payment_attempts.order_by("-created_at").first()
+
+    data = {
+        "user": registration.user,
+        "registration": registration,
+        "manual_payment": manual_payment,
+        "latest_attempt": latest_attempt
+    }
+
+    serializer = PublicUserEventSerializer(data)
+
+    return Response(serializer.data)

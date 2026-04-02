@@ -9,7 +9,7 @@ from .views import (
     update_past_experience, delete_past_experience, get_public_users, get_public_user_by_id, search_public_users, me, generate_qr_from_url,
     get_scientific_interest, update_scientific_interest, verify_email, resend_verification_email, razorpay_webhook, verify_payment, create_payment_order,
     UserViewSet, EventViewSet, MemberViewSet,ResearchNewsAPIView, OpenGraphMetaAPIView, PagePostViewSet, PageFollowViewSet, PageViewSet,
-    ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet, refresh_token,
+    ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet, refresh_token, public_user_event_detail,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet, FollowRequestViewSet, UserFollowViewSet,
     ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet, reset_password, forgot_password, create_registration, upload_manual_payment,
 )
@@ -92,4 +92,5 @@ urlpatterns = [
     path("api/verify-payment/", verify_payment),
     path("api/manual-payment/", upload_manual_payment, name="manual_payment"),
     path("api/payment/gatc/webhook", razorpay_webhook),
+    path("api/public/payment", public_user_event_detail)
 ]
