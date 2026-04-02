@@ -301,7 +301,7 @@ def refresh_token(request):
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=True,
+            secure=False,
             samesite="Lax",
             max_age=60 * 60
         )
@@ -1414,7 +1414,13 @@ class FolderViewSet(viewsets.ModelViewSet):
     # GET /api/folders/tree/
     @action(detail=False, methods=['get'])
     def tree(self, request):
-        roots = Folder.objects.filter(user=request.user, parent=None)
+        folder_id = request.query_params.get('folder_id')
+        
+        if folder_id:
+            roots = Folder.objects.filter(user=request.user, id=folder_id)
+        else:
+            roots = Folder.objects.filter(user=request.user, parent=None)
+            
         serializer = FolderTreeSerializer(roots, many=True)
         return Response(serializer.data)
 
