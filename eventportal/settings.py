@@ -21,7 +21,6 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "exuberantly-plicate-dyan.ngrok-free.dev",
     "myneuron.leadows.com"
-    "https://myneuron.leadows.com"
 ]
 
 
@@ -249,6 +248,7 @@ CSRF_TRUSTED_ORIGINS = [
     "https://api.myneuronworld.com",
     "https://api.myneuronworld.com:9006",
     "https://www.myneuronworld.com",
+    "https://myneuron.leadows.com"
 ]
 
 
