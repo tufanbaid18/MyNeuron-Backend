@@ -152,7 +152,7 @@ def api_register(request):
             EmailVerificationToken.objects.filter(user=existing_user).delete()
 
             token = EmailVerificationToken.objects.create(user=existing_user)
-            verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token.token}"
+            verify_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={token.token}"
 
             send_mail(
                 subject="Verify your email – MyNeuron",
@@ -182,7 +182,7 @@ def api_register(request):
     user = serializer.save()
 
     token = EmailVerificationToken.objects.create(user=user)
-    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token.token}"
+    verify_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={token.token}"
 
     send_mail(
         subject="Verify your email – MyNeuron",
@@ -373,7 +373,7 @@ def resend_verification_email(request):
     # 🔐 Create new token
     token = EmailVerificationToken.objects.create(user=user)
 
-    verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token.token}"
+    verify_url = f"{settings.FRONTEND_URL}/auth/verify-email?token={token.token}"
 
     html_message = f"""
     <html>
