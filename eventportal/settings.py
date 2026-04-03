@@ -21,6 +21,7 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "exuberantly-plicate-dyan.ngrok-free.dev",
     "myneuron.leadows.com"
+    "https://myneuron.leadows.com"
 ]
 
 
@@ -168,6 +169,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://myneuronworld.com",
     "http://localhost:5173",
     "http://myneuron.leadows.com",
+    "myneuron.leadows.com"
 
 ]
 
