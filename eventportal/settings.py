@@ -167,11 +167,10 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.myneuronworld.com",
     "https://myneuronworld.com",
     "http://localhost:5173",
-    "https://myneuron.leadows.com"
-    "https://myneuron.leadows.com:4000/"
-    "https://myneuron.leadows.com:443/"
-    "https://myneuron.leadows.com:80/"
-
+    "https://myneuron.leadows.com",
+    "https://myneuron.leadows.com:4000",
+    "https://myneuron.leadows.com:443",
+    "https://myneuron.leadows.com:80",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -251,7 +250,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://api.myneuronworld.com",
     "https://api.myneuronworld.com:9006",
     "https://www.myneuronworld.com",
-    "https://myneuron.leadows.com"
+    "https://myneuron.leadows.com",
+    "https://myneuron.leadows.com:4000",
 ]
 
 
