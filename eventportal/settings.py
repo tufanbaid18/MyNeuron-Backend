@@ -168,8 +168,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.myneuronworld.com",
     "https://myneuronworld.com",
     "http://localhost:5173",
-    "http://myneuron.leadows.com",
-    "myneuron.leadows.com"
+    "https://myneuron.leadows.com"
 
 ]
 
