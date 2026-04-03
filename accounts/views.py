@@ -249,7 +249,7 @@ def api_login(request):
         key="access_token",
         value=tokens["access"],
         httponly=True,
-        secure=False,        # False for localhost if needed
+        secure=True,        # False for localhost if needed
         samesite="Lax",
         max_age=60 * 60     # 1 hour
     )
@@ -259,7 +259,7 @@ def api_login(request):
         key="refresh_token",
         value=tokens["refresh"],
         httponly=True,
-        secure=False,
+        secure=True,
         samesite="Lax",
         max_age=60 * 60 * 24 * 7   # 7 days
     )
@@ -301,7 +301,7 @@ def refresh_token(request):
             key="access_token",
             value=access_token,
             httponly=True,
-            secure=False,
+            secure=True,
             samesite="Lax",
             max_age=60 * 60
         )
