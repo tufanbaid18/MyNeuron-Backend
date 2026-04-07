@@ -469,7 +469,7 @@ def forgot_password(request):
         PasswordResetToken.objects.filter(user=user).delete()
 
         token = PasswordResetToken.objects.create(user=user)
-        reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token.token}"
+        reset_url = f"{settings.FRONTEND_URL}/auth/reset-password?token={token.token}"
 
         send_mail(
             subject="Reset your password – MyNeuron",
