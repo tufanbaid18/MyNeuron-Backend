@@ -54,9 +54,26 @@ class EventViewSet(viewsets.ModelViewSet):
 
 
 class MemberViewSet(viewsets.ModelViewSet):
-    queryset = Member.objects.select_related('user','event').all()
+    # queryset = Member.objects.select_related('user','event').all()
     serializer_class = MemberSerializer
     permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        queryset = Member.objects.select_related('user', 'event')
+
+        role = self.request.query_params.get('role')
+        event_id = self.request.query_params.get('event')
+        user_id = self.request.query_params.get('user')
+
+        if role:
+            queryset = queryset.filter(role__iexact=role)
+
+        if event_id:
+            queryset = queryset.filter(event_id=event_id)
+
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+
+        return queryset
 
 
 

@@ -23,7 +23,7 @@ from rest_framework_simplejwt.views import (
 router = DefaultRouter()
 router.register('users', UserViewSet)
 router.register('events', EventViewSet)
-router.register('members', MemberViewSet)
+router.register('members', MemberViewSet, basename='members')
 router.register('user-profile', UserProfileViewSet, basename='user-profile')
 router.register('posts', PostViewSet, basename='post')
 router.register("handshake", HandshakeViewSet, basename="handshake")
