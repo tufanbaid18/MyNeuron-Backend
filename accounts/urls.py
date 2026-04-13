@@ -12,6 +12,7 @@ from .views import (
     ConversationViewSet, FolderViewSet, FolderItemViewSet, ProgramViewSet, MessageViewSet, refresh_token, public_user_event_detail,
     HandshakeViewSet, NotificationViewSet, UserProfileViewSet, PostViewSet, CalendarEventViewSet, FollowRequestViewSet, UserFollowViewSet,
     ArticleViewSet, ArticleReferenceViewSet, ArticleRatingViewSet, reset_password, forgot_password, create_registration, upload_manual_payment,
+    get_my_activity,
 )
 from rest_framework_simplejwt.views import (
     TokenRefreshView,
@@ -92,5 +93,7 @@ urlpatterns = [
     path("api/verify-payment/", verify_payment),
     path("api/manual-payment/", upload_manual_payment, name="manual_payment"),
     path("api/payment/gatc/webhook", razorpay_webhook),
-    path("api/public/payment", public_user_event_detail)
+    path("api/public/payment", public_user_event_detail),
+    path("api/my-activity/", get_my_activity),
 ]
+

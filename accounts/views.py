@@ -2847,3 +2847,22 @@ def public_user_event_detail(request):
     serializer = PublicUserEventSerializer(data)
 
     return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_my_activity(request):
+    """
+    Returns counts of follow-related activity for the authenticated user:
+    - follow_requests: pending follow requests received
+    - pending_requests: pending follow requests sent (not yet accepted)
+    - following: accepted follow requests made by the user
+    - followers: accepted follow requests from other users
+    """
+    user = request.user
+    return Response({
+        "follow_requests": FollowRequest.objects.filter(following=user, status="pending").count(),
+        "pending_requests": FollowRequest.objects.filter(follower=user, status="pending").count(),
+        "following": FollowRequest.objects.filter(follower=user, status="accepted").count(),
+        "followers": FollowRequest.objects.filter(following=user, status="accepted").count(),
+    })
