@@ -12,6 +12,16 @@ from django.db.models import Avg, Count
 
 
 
+def assign_participant_role(registration):
+    # Just ensure participant exists
+    Member.objects.get_or_create(
+        user=registration.user,
+        event=registration.event,
+        role="participant"
+    )
+
+
+
 def profile_upload_path(instance, filename):
     return f"profiles/user_{instance.id}/{filename}"
 
@@ -1184,6 +1194,8 @@ class ManualPayment(models.Model):
 
         elif self.status == "VERIFIED":
             self.registration.status = "MANUAL_VERIFIED"
+
+            assign_participant_role(self.registration)
 
         elif self.status == "REJECTED":
             self.registration.status = "PENDING_PAYMENT"

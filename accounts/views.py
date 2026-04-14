@@ -7,10 +7,10 @@ from django.contrib.auth import logout
 from django.shortcuts import render, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer, FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer, PublicUserEventSerializer 
-from .models import PasswordResetToken, FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken, Article, ArticleReference
+from .serializers import ArticleFigureSerializer, ForgotPasswordSerializer, ResetPasswordSerializer, FollowRequestSerializer, FollowUserListSerializer, UserSerializer, EventSerializer, MemberSerializer, UserProfileSerializer, PersonalDetailSerializer, PersonalDetailSerializer, ProfessionalDetailSerializer, EducationSerializer, PastExperienceSerializer, PublicUserProfileSerializer, ProfessionalDetailSerializer, NotificationSerializer, CalendarEventSerializer, ScientificInterestSerializer, FolderItemSerializer, FolderTreeSerializer, FolderCreateSerializer, MessageSerializer, ProgramSerializer, UserMiniSerializer, HandshakeSerializer, CommentSerializer, EducationSerializer, PostSerializer, ArticleSerializer, ArticleReferenceSerializer, PublicUserEventSerializer 
+from .models import ArticleFigure, PasswordResetToken, FollowRequest, Event, Member, User, PersonalDetail, ProfessionalDetail, Education, PastExperience, ScientificInterest, Like, Bookmark, Comment, CalendarEvent, Program, Notification, HandshakeRequest, Folder, FolderItem, Message, Post, PostMedia, EmailVerificationToken, Article, ArticleReference
 from .forms import RegisterForm
-from .models import ArticleRating, Page, PageFollow, PagePost, PagePostMedia
+from .models import ArticleRating, Page, PageFollow, PagePost, PagePostMedia, assign_participant_role
 from .serializers import ArticleRatingSerializer, PageFollowSerializer, PagePostSerializer, FeedSerializer, PageDetailSerializer, PageSerializer
 from django.http import JsonResponse, HttpResponse
 from django.core.files.base import ContentFile
@@ -1027,6 +1027,50 @@ def search_public_users(request):
 
 
 
+class NotificationViewSet(viewsets.ModelViewSet):
+    queryset = Notification.objects.all().order_by("-created_at")
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Logged-in user should only see *their* notifications.
+        """
+        return Notification.objects.filter(user=self.request.user).order_by("-created_at")
+
+    @action(detail=False, methods=["get"])
+    def unread_count(self, request):
+        """
+        Return the count of unread notifications
+        """
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({"unread": count})
+    
+    @action(detail=True, methods=["post"])
+    def mark_read(self, request, pk=None):
+        notification = self.get_object()
+        notification.is_read = True
+        notification.save()
+        return Response({"message": "Notification marked as read"})
+
+    @action(detail=False, methods=["post"])
+    def mark_all_read(self, request):
+        Notification.objects.filter(user=request.user).update(is_read=True)
+        return Response({"message": "All notifications marked as read"})
+    
+    @action(detail=True, methods=["delete"])
+    def delete_notification(self, request, pk=None):
+        notification = self.get_object()
+        notification.delete()
+        return Response({"message": "Notification deleted"})
+    
+    
+    # ✅ THIS IS THE IMPORTANT FIX
+    @action(detail=False, methods=["delete"])
+    def clear_all(self, request):
+        Notification.objects.filter(user=request.user).delete()
+        return Response({"message": "All notifications cleared"})
+
 
 
 
@@ -1106,7 +1150,7 @@ class HandshakeViewSet(viewsets.ModelViewSet):
                 "action": "accepted your handshake request",
                 "actor": handshake.receiver.id,
                 "handshake": handshake.id,
-                "created_at": str(notification.created_at),
+                "created_at": str(Notification.created_at),
                 "is_read": False
             }
         )
@@ -1138,7 +1182,7 @@ class HandshakeViewSet(viewsets.ModelViewSet):
                 "action": "declined your handshake request",
                 "actor": handshake.receiver.id,
                 "handshake": handshake.id,
-                "created_at": str(notification.created_at),
+                "created_at": str(Notification.created_at),
                 "is_read": False
             }
         )
@@ -1181,50 +1225,6 @@ class HandshakeViewSet(viewsets.ModelViewSet):
 
 
 
-
-class NotificationViewSet(viewsets.ModelViewSet):
-    queryset = Notification.objects.all().order_by("-created_at")
-    serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        """
-        Logged-in user should only see *their* notifications.
-        """
-        return Notification.objects.filter(user=self.request.user).order_by("-created_at")
-
-    @action(detail=False, methods=["get"])
-    def unread_count(self, request):
-        """
-        Return the count of unread notifications
-        """
-        count = Notification.objects.filter(user=request.user, is_read=False).count()
-        return Response({"unread": count})
-    
-    @action(detail=True, methods=["post"])
-    def mark_read(self, request, pk=None):
-        notification = self.get_object()
-        notification.is_read = True
-        notification.save()
-        return Response({"message": "Notification marked as read"})
-
-    @action(detail=False, methods=["post"])
-    def mark_all_read(self, request):
-        Notification.objects.filter(user=request.user).update(is_read=True)
-        return Response({"message": "All notifications marked as read"})
-    
-    @action(detail=True, methods=["delete"])
-    def delete_notification(self, request, pk=None):
-        notification = self.get_object()
-        notification.delete()
-        return Response({"message": "Notification deleted"})
-    
-    
-    # ✅ THIS IS THE IMPORTANT FIX
-    @action(detail=False, methods=["delete"])
-    def clear_all(self, request):
-        Notification.objects.filter(user=request.user).delete()
-        return Response({"message": "All notifications cleared"})
 
 
 
@@ -2248,7 +2248,9 @@ class ArticleViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         if self.request.method in permissions.SAFE_METHODS:
-            return Article.objects.filter(is_published=True)
+            return Article.objects.filter(
+                Q(is_published=True) | Q(author=user)
+            )
 
         return Article.objects.filter(author=user)
 
@@ -2302,6 +2304,39 @@ class ArticleRatingViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
+
+class ArticleFigureViewSet(viewsets.ModelViewSet):
+    serializer_class = ArticleFigureSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # 🔒 Only show figures of user's articles
+        return ArticleFigure.objects.filter(
+            article__author=self.request.user
+        )
+
+    def perform_create(self, serializer):
+        article = serializer.validated_data.get("article")
+
+        # 🔒 Ensure user owns the article
+        if article.author != self.request.user:
+            raise PermissionDenied("You can only upload figures to your own articles.")
+
+        serializer.save()
+
+    def perform_update(self, serializer):
+        article = serializer.instance.article
+
+        if article.author != self.request.user:
+            raise PermissionDenied("You cannot edit this figure.")
+
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.article.author != self.request.user:
+            raise PermissionDenied("You cannot delete this figure.")
+
+        instance.delete()
 
 class PageViewSet(viewsets.ModelViewSet):
 
@@ -2559,6 +2594,8 @@ class PagePostViewSet(viewsets.ModelViewSet):
 
 
 
+
+
 @api_view(["POST"])
 def create_registration(request):
 
@@ -2699,6 +2736,8 @@ def verify_payment(request):
         registration.status = "PAID"
         registration.save()
 
+        assign_participant_role(registration)
+
         return Response({"message": "Payment successful"})
 
     else:
@@ -2796,6 +2835,8 @@ def razorpay_webhook(request):
             if registration.status != "PAID":
                 registration.status = "PAID"
                 registration.save()
+
+                assign_participant_role(registration)
 
     elif data["event"] == "payment.failed":
 

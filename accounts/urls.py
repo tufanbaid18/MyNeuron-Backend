@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    api_register, api_login,api_logout, api_event_register,
+    ArticleFigureViewSet, api_register, api_login,api_logout, api_event_register,
     upload_profile_image, get_personal_detail,
     update_personal_detail, get_professional_detail,
     update_professional_detail, add_comment, get_education_details, add_education_detail,
@@ -39,6 +39,7 @@ router.register('usersfollow', UserFollowViewSet, basename='user-follows')
 router.register("articles", ArticleViewSet, basename="articles")
 router.register("article-references", ArticleReferenceViewSet, basename="article-references")
 router.register("article-ratings", ArticleRatingViewSet, basename="article-ratings")
+router.register("article-figures", ArticleFigureViewSet, basename="article-figures")
 router.register("pages", PageViewSet, basename="pages")
 router.register("page-posts", PagePostViewSet, basename="page-posts")
 router.register("page-follow", PageFollowViewSet, basename="page-follow")
@@ -55,39 +56,47 @@ urlpatterns = [
     path("api/verify-email/", verify_email),
     path('api/event-register/', api_event_register),
     path('api/upload-profile-image/', upload_profile_image),
-    path('api/profile/personal/', get_personal_detail),
-    path('api/profile/personal/update/', update_personal_detail),
-    path('api/profile/professional/', get_professional_detail),
-    path('api/profile/professional/update/', update_professional_detail),
-    path('api/posts/<int:post_id>/comment/', add_comment, name='add_comment'),
-    path('api/profile/education/', get_education_details),
-    path('api/profile/education/add/', add_education_detail),
-    path('api/profile/education/<int:pk>/update/', update_education_detail),
-    path('api/profile/education/<int:pk>/delete/', delete_education_detail),
-    path("api/speakers/", get_speakers),
-    path("api/speakers/<int:id>/", get_speaker_by_id, name="get_speaker_by_id"),
-    path("api/conversations/", ConversationViewSet.as_view({"get": "list"})),
-
-    # 🔥 ADD THESE — PAST EXPERIENCE 🔥
-    path('api/profile/past-experience/', get_past_experiences),
-    path('api/profile/past-experience/add/', add_past_experience),
-    path('api/profile/past-experience/<int:pk>/update/', update_past_experience),
-    path('api/profile/past-experience/<int:pk>/delete/', delete_past_experience),
-
-    path("api/public/users/", get_public_users, name="public-users"),
-    path("api/public/users/<int:id>/", get_public_user_by_id, name="public-user-by-id"),
-    path("api/public/users/search/", search_public_users, name="public-user-search"),
-    # urls.py
-    path("api/news/", ResearchNewsAPIView.as_view()),
-    path("api/og-meta/", OpenGraphMetaAPIView.as_view(), name="og-meta"),
-    path("api/me", me),
-    path("api/qr/", generate_qr_from_url),
-    path("api/profile/scientific-interest/", get_scientific_interest, name="get-scientific-interest"),
-    path("api/profile/scientific-interest/update/", update_scientific_interest, name="update-scientific-interest"),
     path("api/resend-verification/", resend_verification_email, name="resend-verification"),
     path("api/forgot-password/", forgot_password),
     path("api/reset-password/", reset_password),
     path("api/refresh-token/", refresh_token, name="refresh_token"),
+
+
+
+    path('api/profile/personal/', get_personal_detail),
+    path('api/profile/personal/update/', update_personal_detail),
+    path('api/profile/professional/', get_professional_detail),
+    path('api/profile/professional/update/', update_professional_detail),
+    path('api/profile/education/', get_education_details),
+    path('api/profile/education/add/', add_education_detail),
+    path('api/profile/education/<int:pk>/update/', update_education_detail),
+    path('api/profile/education/<int:pk>/delete/', delete_education_detail),
+    path('api/profile/past-experience/', get_past_experiences),
+    path('api/profile/past-experience/add/', add_past_experience),
+    path('api/profile/past-experience/<int:pk>/update/', update_past_experience),
+    path('api/profile/past-experience/<int:pk>/delete/', delete_past_experience),
+    path("api/profile/scientific-interest/", get_scientific_interest, name="get-scientific-interest"),
+    path("api/profile/scientific-interest/update/", update_scientific_interest, name="update-scientific-interest"),
+
+    path('api/posts/<int:post_id>/comment/', add_comment, name='add_comment'),
+
+    path("api/speakers/", get_speakers),
+    path("api/speakers/<int:id>/", get_speaker_by_id, name="get_speaker_by_id"),
+
+    path("api/conversations/", ConversationViewSet.as_view({"get": "list"})),
+
+    path("api/public/users/", get_public_users, name="public-users"),
+    path("api/public/users/<int:id>/", get_public_user_by_id, name="public-user-by-id"),
+    path("api/public/users/search/", search_public_users, name="public-user-search"),
+
+
+
+    path("api/news/", ResearchNewsAPIView.as_view()),
+    path("api/og-meta/", OpenGraphMetaAPIView.as_view(), name="og-meta"),
+    path("api/me", me),
+    path("api/qr/", generate_qr_from_url),
+
+
     path("api/registrations/", create_registration, name="create_registration"),
     path("api/create-order/<int:registration_id>/", create_payment_order),
     path("api/verify-payment/", verify_payment),

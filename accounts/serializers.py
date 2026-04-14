@@ -9,7 +9,7 @@ from django.utils import timezone
 from django.contrib.auth.password_validation import validate_password
 from .s3 import presigned_url
 from django.db import transaction
-
+import json
 
 # -------------------------------
 # 🔹 USER SERIALIZER (for signup)
@@ -893,10 +893,21 @@ class ArticleSectionSerializer(serializers.ModelSerializer):
 
 
 class ArticleFigureSerializer(serializers.ModelSerializer):
+    article = serializers.PrimaryKeyRelatedField(
+        queryset=Article.objects.all()
+    )
+
+    section = serializers.PrimaryKeyRelatedField(
+        queryset=ArticleSection.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
     class Meta:
         model = ArticleFigure
         fields = (
             "id",
+            "article",
             "section",
             "image",
             "caption",
@@ -904,17 +915,62 @@ class ArticleFigureSerializer(serializers.ModelSerializer):
         )
         read_only_fields = ("figure_number",)
 
+    def validate(self, data):
+        article = data.get("article")
+        section = data.get("section")
+
+        # 🔒 Ensure section belongs to same article
+        if section and section.article != article:
+            raise serializers.ValidationError(
+                "Section does not belong to the selected article."
+            )
+
+        return data
+    
+
+
 class ArticleKeywordSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArticleKeyword
         fields = ("id", "name")
 
+
 class ArticleReferenceSerializer(serializers.ModelSerializer):
-    user_email = serializers.EmailField(source="user.email", read_only=True)
+    article = serializers.PrimaryKeyRelatedField(
+        queryset=Article.objects.all()
+    )
+
+    # 🔥 NEW FIELDS
+    user_name = serializers.SerializerMethodField()
+    user_profile_image = serializers.SerializerMethodField()
 
     class Meta:
         model = ArticleReference
-        fields = ("id", "user", "user_email", "created_at")
+        fields = (
+            "id",
+            "article",
+            "user",
+            "user_name",
+            "user_profile_image",
+            "created_at",
+        )
+
+    # -------------------------
+    # ✅ USER NAME
+    # -------------------------
+    def get_user_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
+
+    # -------------------------
+    # ✅ PROFILE IMAGE
+    # -------------------------
+    def get_user_profile_image(self, obj):
+        request = self.context.get("request")
+
+        if obj.user.profile_image:
+            return request.build_absolute_uri(obj.user.profile_image.url)
+
+        return None
 
     def validate_user(self, user):
         request_user = self.context["request"].user
@@ -932,10 +988,17 @@ class ArticleReferenceSerializer(serializers.ModelSerializer):
 
         return user
 
+
 class ArticleSerializer(serializers.ModelSerializer):
     sections = ArticleSectionSerializer(many=True, required=False)
-    figures = ArticleFigureSerializer(many=True, required=False, read_only=True)
+    figures = ArticleFigureSerializer(many=True, read_only=True)
     references = ArticleReferenceSerializer(many=True, read_only=True)
+
+    # ✅ OUTPUT
+    keywords = serializers.SerializerMethodField(read_only=True)
+
+    # ✅ INPUT
+    keywords_input = serializers.CharField(write_only=True, required=False)
 
     author_name = serializers.SerializerMethodField()
 
@@ -963,27 +1026,113 @@ class ArticleSerializer(serializers.ModelSerializer):
             "updated_at",
             "average_rating",
             "rating_count",
+            "keywords",
+            "keywords_input",
         )
         read_only_fields = ("author_name", "published_at")
 
+    # -------------------------
+    # ✅ GETTERS
+    # -------------------------
     def get_author_name(self, obj):
         return obj.author_name()
 
-    def create(self, validated_data):
-        sections_data = validated_data.pop("sections", [])
-        article = Article.objects.create(
-            author=self.context["request"].user,
-            **validated_data
-        )
+    def get_keywords(self, obj):
+        return [
+            {
+                "id": km.keyword.id,
+                "name": km.keyword.name
+            }
+            for km in obj.keyword_maps.all()
+        ]
 
+    # -------------------------
+    # ✅ CREATE
+    # -------------------------
+    def create(self, validated_data):
+        request = self.context.get("request")
+
+        # Remove nested
+        validated_data.pop("sections", None)
+        keywords_raw = validated_data.pop("keywords_input", None)
+
+        # -------------------------
+        # 🔥 HANDLE SECTIONS
+        # -------------------------
+        sections_data = request.data.get("sections", [])
+
+        if isinstance(sections_data, str):
+            try:
+                sections_data = json.loads(sections_data)
+            except:
+                sections_data = []
+
+        if not isinstance(sections_data, list):
+            sections_data = []
+
+        # -------------------------
+        # 🔥 CREATE ARTICLE
+        # -------------------------
+        article = Article.objects.create(**validated_data)
+
+        # -------------------------
+        # 🔥 SAVE SECTIONS
+        # -------------------------
         for section in sections_data:
-            ArticleSection.objects.create(article=article, **section)
+            if isinstance(section, dict):
+                ArticleSection.objects.create(
+                    article=article,
+                    section_type=section.get("section_type"),
+                    title=section.get("title"),
+                    content=section.get("content"),
+                    order=section.get("order", 0),
+                )
+
+        # -------------------------
+        # 🔥 HANDLE KEYWORDS
+        # -------------------------
+        keywords_data = []
+
+        if keywords_raw:
+            try:
+                # Try parsing JSON string
+                if isinstance(keywords_raw, str):
+                    keywords_data = json.loads(keywords_raw)
+                elif isinstance(keywords_raw, list):
+                    keywords_data = keywords_raw
+            except:
+                keywords_data = []
+
+        # Ensure list
+        if not isinstance(keywords_data, list):
+            keywords_data = [keywords_data]
+
+        # Save keywords safely
+        for keyword_name in keywords_data:
+            if not keyword_name:
+                continue
+
+            keyword_obj, _ = ArticleKeyword.objects.get_or_create(
+                name=str(keyword_name).strip()
+            )
+
+            ArticleKeywordMap.objects.get_or_create(
+                article=article,
+                keyword=keyword_obj
+            )
 
         return article
 
+    # -------------------------
+    # ✅ UPDATE
+    # -------------------------
     def update(self, instance, validated_data):
-        sections_data = validated_data.pop("sections", None)
+        request = self.context.get("request")
 
+        validated_data.pop("sections", None)
+        keywords_raw = validated_data.pop("keywords_input", None)
+
+        # Update fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
@@ -992,13 +1141,63 @@ class ArticleSerializer(serializers.ModelSerializer):
 
         instance.save()
 
-        if sections_data is not None:
+        # -------------------------
+        # 🔥 UPDATE SECTIONS
+        # -------------------------
+        sections_data = request.data.get("sections")
+
+        if sections_data:
+            if isinstance(sections_data, str):
+                try:
+                    sections_data = json.loads(sections_data)
+                except:
+                    sections_data = []
+
             instance.sections.all().delete()
+
             for section in sections_data:
-                ArticleSection.objects.create(article=instance, **section)
+                if isinstance(section, dict):
+                    ArticleSection.objects.create(
+                        article=instance,
+                        section_type=section.get("section_type"),
+                        title=section.get("title"),
+                        content=section.get("content"),
+                        order=section.get("order", 0),
+                    )
+
+        # -------------------------
+        # 🔥 UPDATE KEYWORDS
+        # -------------------------
+        if keywords_raw is not None:
+            instance.keyword_maps.all().delete()
+
+            keywords_data = []
+
+            try:
+                if isinstance(keywords_raw, str):
+                    keywords_data = json.loads(keywords_raw)
+                elif isinstance(keywords_raw, list):
+                    keywords_data = keywords_raw
+            except:
+                keywords_data = []
+
+            if not isinstance(keywords_data, list):
+                keywords_data = [keywords_data]
+
+            for keyword_name in keywords_data:
+                if not keyword_name:
+                    continue
+
+                keyword_obj, _ = ArticleKeyword.objects.get_or_create(
+                    name=str(keyword_name).strip()
+                )
+
+                ArticleKeywordMap.objects.create(
+                    article=instance,
+                    keyword=keyword_obj
+                )
 
         return instance
-
 
 
 class ArticleRatingSerializer(serializers.ModelSerializer):
