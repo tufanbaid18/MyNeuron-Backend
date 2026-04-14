@@ -1153,7 +1153,7 @@ class PagePostMediaSerializer(serializers.ModelSerializer):
 
 class PagePostSerializer(serializers.ModelSerializer):
 
-    page = serializers.PrimaryKeyRelatedField(read_only=True)
+    page_details = serializers.SerializerMethodField()
 
     media = PagePostMediaSerializer(many=True, read_only=True)
 
@@ -1163,12 +1163,21 @@ class PagePostSerializer(serializers.ModelSerializer):
         model = PagePost
         fields = [
             "id",
-            "page",
+            "page_details",
             "created_by",
             "content",
             "media",
             "created_at",
         ]
+
+    def get_page_details(self, obj):
+        page = obj.page
+        return {
+            "id": page.id,
+            "page_name": page.page_name,
+            "category": page.category,
+            "profile_image": presigned_url(page.profile_image.name) if page.profile_image else None,
+        }
 
 
 
