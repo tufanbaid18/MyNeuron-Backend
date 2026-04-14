@@ -2346,6 +2346,19 @@ class PageViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     # -----------------------
+    # PAGE COUNTS
+    # -----------------------
+    @action(detail=False, methods=["get"])
+    def counts(self, request):
+
+        user = request.user
+
+        return Response({
+            "my_pages": Page.objects.filter(owner=user).count(),
+            "followed_pages": PageFollow.objects.filter(user=user).count(),
+        })
+
+    # -----------------------
     # PAGE POSTS
     # -----------------------
     @action(detail=True, methods=["get"])
