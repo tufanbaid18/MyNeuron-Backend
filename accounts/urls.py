@@ -94,6 +94,6 @@ urlpatterns = [
     path("api/manual-payment/", upload_manual_payment, name="manual_payment"),
     path("api/payment/gatc/webhook", razorpay_webhook),
     path("api/public/payment", public_user_event_detail),
-    path("api/my-activity/", get_my_activity),
+    path("api/my-activity/overview", get_my_activity),
 ]
 
