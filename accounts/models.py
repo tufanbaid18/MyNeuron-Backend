@@ -435,7 +435,7 @@ class Post(models.Model):
         on_delete=models.CASCADE,
         related_name='posts'
     )
-    title = models.CharField(max_length=255, blank=True)  # ✅ new field
+    title = models.CharField(max_length=255, blank=True) 
     content = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     link_preview = models.JSONField(null=True, blank=True)
