@@ -729,10 +729,16 @@ def update_personal_detail(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_professional_detail(request):
-    """Fetch logged-in user's professional details (with past experiences)"""
     professional_detail, _ = ProfessionalDetail.objects.get_or_create(user=request.user)
     serializer = ProfessionalDetailSerializer(professional_detail)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+
+    past_experiences = PastExperience.objects.filter(user=request.user)
+    past_serializer = PastExperienceSerializer(past_experiences, many=True)
+
+    data = serializer.data
+    data["past_experiences"] = past_serializer.data
+
+    return Response(data, status=status.HTTP_200_OK)
 
 
 @api_view(['PUT', 'PATCH'])
@@ -969,7 +975,8 @@ def get_speaker_by_id(request, id):
 def get_public_users(request):
     users = User.objects.all().select_related(
         "personal_detail",
-        "professional_detail"
+        "professional_detail",
+        "scientific_interest"
     ).prefetch_related(
         "education",
         "past_experiences"

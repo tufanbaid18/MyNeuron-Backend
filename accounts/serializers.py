@@ -153,11 +153,6 @@ class PastExperienceSerializer(serializers.ModelSerializer):
 
 
 class ProfessionalDetailSerializer(serializers.ModelSerializer):
-    past_experiences = PastExperienceSerializer(
-        many=True,
-        required=False,
-        source="user.past_experiences"
-    )
 
     class Meta:
         model = ProfessionalDetail
@@ -177,10 +172,8 @@ class ProfessionalDetailSerializer(serializers.ModelSerializer):
             "skill_set",
             "languages_spoken",
             "certifications",
-            "past_experiences",
         ]
         read_only_fields = ["user"]
-
     
 class ScientificInterestSerializer(serializers.ModelSerializer):
     class Meta:
@@ -804,6 +797,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
     professional_detail = PublicProfessionalDetailSerializer(read_only=True)
     education = PublicEducationSerializer(many=True, read_only=True)
     scientific_interest = PublicScientificInterestSerializer(read_only=True)
+    past_experiences = PublicPastExperienceSerializer(many=True, read_only=True)
 
     class Meta:
         model = User
@@ -820,6 +814,7 @@ class PublicUserProfileSerializer(serializers.ModelSerializer):
             "professional_detail",
             "education",
             "scientific_interest",
+            "past_experiences", 
         ]
 
     def get_profile_image(self, obj):
