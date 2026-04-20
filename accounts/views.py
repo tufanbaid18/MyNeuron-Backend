@@ -2404,10 +2404,10 @@ class PageViewSet(viewsets.ModelViewSet):
     # -----------------------
     # MY PAGES LIST (filtered)
     # -----------------------
-    @action(detail=False, methods=["get"], url_path="my-pages-list")
+    @action(detail=False, methods=["get"], url_path="filter")
     def my_pages_list(self, request):
         """
-        GET /api/pages/my-pages-list/?type=my_pages|followed_pages&category=company
+        GET /api/pages/filter/?type=my_pages|followed_pages&category=company
 
         Both query params are optional.
         - type: "my_pages" (owned/created) | "followed_pages" (pages I follow)
