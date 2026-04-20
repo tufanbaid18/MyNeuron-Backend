@@ -2347,6 +2347,7 @@ class ArticleFigureViewSet(viewsets.ModelViewSet):
 
 class PageViewSet(viewsets.ModelViewSet):
 
+    
     queryset = Page.objects.all().order_by("-created_at")
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser] 
@@ -2399,6 +2400,54 @@ class PageViewSet(viewsets.ModelViewSet):
             "my_pages": Page.objects.filter(owner=user).count(),
             "followed_pages": PageFollow.objects.filter(user=user).count(),
         })
+
+    # -----------------------
+    # MY PAGES LIST (filtered)
+    # -----------------------
+    @action(detail=False, methods=["get"], url_path="my-pages-list")
+    def my_pages_list(self, request):
+        """
+        GET /api/pages/my-pages-list/?type=my_pages|followed_pages&category=company
+
+        Both query params are optional.
+        - type: "my_pages" (owned/created) | "followed_pages" (pages I follow)
+                Omit to get both combined.
+        - category: filter by Page.category value
+                    (company | event | community | general)
+        """
+        page_type = request.query_params.get("type")
+        category = request.query_params.get("category")
+
+        if page_type == "my_pages":
+            queryset = Page.objects.filter(owner=request.user)
+
+        elif page_type == "followed_pages":
+            followed_ids = PageFollow.objects.filter(
+                user=request.user
+            ).values_list("page_id", flat=True)
+            queryset = Page.objects.filter(id__in=followed_ids)
+
+        else:
+            # No type filter → union of owned + followed
+            followed_ids = PageFollow.objects.filter(
+                user=request.user
+            ).values_list("page_id", flat=True)
+            queryset = Page.objects.filter(
+                Q(owner=request.user) | Q(id__in=followed_ids)
+            )
+
+        if category:
+            queryset = queryset.filter(category=category)
+
+        queryset = queryset.order_by("-created_at").distinct()
+
+        serializer = PageDetailSerializer(
+            queryset,
+            many=True,
+            context={"request": request},
+        )
+
+        return Response(serializer.data)
 
     # -----------------------
     # PAGE POSTS
