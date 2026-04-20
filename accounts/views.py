@@ -2405,7 +2405,7 @@ class PageViewSet(viewsets.ModelViewSet):
     # MY PAGES LIST (filtered)
     # -----------------------
     @action(detail=False, methods=["get"], url_path="filter")
-    def my_pages_list(self, request):
+    def filter(self, request):
         """
         GET /api/pages/filter/?type=my_pages|followed_pages&category=company
 
@@ -2428,13 +2428,8 @@ class PageViewSet(viewsets.ModelViewSet):
             queryset = Page.objects.filter(id__in=followed_ids)
 
         else:
-            # No type filter → union of owned + followed
-            followed_ids = PageFollow.objects.filter(
-                user=request.user
-            ).values_list("page_id", flat=True)
-            queryset = Page.objects.filter(
-                Q(owner=request.user) | Q(id__in=followed_ids)
-            )
+            # No type filter → all pages
+            queryset = Page.objects.all()
 
         if category:
             queryset = queryset.filter(category=category)
