@@ -380,6 +380,19 @@ class MemberSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+
+class ArticleMiniSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Article
+        fields = (
+            "id",
+            "title",
+            "abstract",
+            "featured_image",
+            "cover_image", 
+        )
+
+
 # -------------------------------
 # 🔹 POST + MEDIA SERIALIZERS
 # -------------------------------
@@ -435,6 +448,7 @@ class PostSerializer(serializers.ModelSerializer):
     user = UserMiniSerializer(read_only=True)
     media = PostMediaSerializer(many=True, read_only=True)
 
+
     like_count = serializers.SerializerMethodField()
     bookmark_count = serializers.SerializerMethodField()
     comment_count = serializers.SerializerMethodField()
@@ -474,6 +488,7 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_comment_count(self, obj):
         return obj.comments.count()
+    
 
     # -----------------------
     # USER STATE
@@ -888,15 +903,7 @@ class ArticleSectionSerializer(serializers.ModelSerializer):
 
 
 class ArticleFigureSerializer(serializers.ModelSerializer):
-    article = serializers.PrimaryKeyRelatedField(
-        queryset=Article.objects.all()
-    )
-
-    section = serializers.PrimaryKeyRelatedField(
-        queryset=ArticleSection.objects.all(),
-        required=False,
-        allow_null=True
-    )
+    image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ArticleFigure
@@ -905,22 +912,14 @@ class ArticleFigureSerializer(serializers.ModelSerializer):
             "article",
             "section",
             "image",
+            "image_url",
             "caption",
             "figure_number",
         )
         read_only_fields = ("figure_number",)
 
-    def validate(self, data):
-        article = data.get("article")
-        section = data.get("section")
-
-        # 🔒 Ensure section belongs to same article
-        if section and section.article != article:
-            raise serializers.ValidationError(
-                "Section does not belong to the selected article."
-            )
-
-        return data
+    def get_image_url(self, obj):
+        return presigned_url(obj.image)
     
 
 
@@ -988,12 +987,18 @@ class ArticleSerializer(serializers.ModelSerializer):
     sections = ArticleSectionSerializer(many=True, required=False)
     figures = ArticleFigureSerializer(many=True, read_only=True)
     references = ArticleReferenceSerializer(many=True, read_only=True)
+    featured_image_url = serializers.SerializerMethodField()
+    cover_image_url = serializers.SerializerMethodField()
 
     # ✅ OUTPUT
     keywords = serializers.SerializerMethodField(read_only=True)
 
     # ✅ INPUT
-    keywords_input = serializers.CharField(write_only=True, required=False)
+    keywords_input = serializers.ListField(
+    child=serializers.CharField(),
+    write_only=True,
+    required=False
+)
 
     author_name = serializers.SerializerMethodField()
 
@@ -1005,7 +1010,9 @@ class ArticleSerializer(serializers.ModelSerializer):
             "specialization",
             "abstract",
             "featured_image",
+            "featured_image_url",
             "cover_image",
+            "cover_image_url",
             "acknowledgements",
             "author_contributions",
             "funding",
@@ -1040,6 +1047,12 @@ class ArticleSerializer(serializers.ModelSerializer):
             }
             for km in obj.keyword_maps.all()
         ]
+    
+    def get_featured_image_url(self, obj):
+        return presigned_url(obj.featured_image)
+
+    def get_cover_image_url(self, obj):
+        return presigned_url(obj.cover_image)
 
     # -------------------------
     # ✅ CREATE
@@ -1070,17 +1083,23 @@ class ArticleSerializer(serializers.ModelSerializer):
         # -------------------------
         article = Article.objects.create(**validated_data)
 
-        # -------------------------
-        # 🔥 SAVE SECTIONS
-        # -------------------------
-        for section in sections_data:
-            if isinstance(section, dict):
-                ArticleSection.objects.create(
+        for section_data in sections_data:
+            figures = section_data.pop("figures", [])
+
+            section = ArticleSection.objects.create(
+                article=article,
+                section_type=section_data.get("section_type"),
+                title=section_data.get("title"),
+                content=section_data.get("content"),
+                order=section_data.get("order", 0),
+            )
+
+            for fig in figures:
+                ArticleFigure.objects.create(
                     article=article,
-                    section_type=section.get("section_type"),
-                    title=section.get("title"),
-                    content=section.get("content"),
-                    order=section.get("order", 0),
+                    section=section,
+                    image=fig.get("image"),
+                    caption=fig.get("caption", "")
                 )
 
         # -------------------------
@@ -1150,14 +1169,23 @@ class ArticleSerializer(serializers.ModelSerializer):
 
             instance.sections.all().delete()
 
-            for section in sections_data:
-                if isinstance(section, dict):
-                    ArticleSection.objects.create(
+            for section_data in sections_data:
+                figures = section_data.pop("figures", [])
+
+                section = ArticleSection.objects.create(
+                    article=instance,
+                    section_type=section_data.get("section_type"),
+                    title=section_data.get("title"),
+                    content=section_data.get("content"),
+                    order=section_data.get("order", 0),
+                )
+
+                for fig in figures:
+                    ArticleFigure.objects.create(
                         article=instance,
-                        section_type=section.get("section_type"),
-                        title=section.get("title"),
-                        content=section.get("content"),
-                        order=section.get("order", 0),
+                        section=section,
+                        image=fig.get("image"),
+                        caption=fig.get("caption", "")
                     )
 
         # -------------------------

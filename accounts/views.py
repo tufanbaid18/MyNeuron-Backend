@@ -27,7 +27,7 @@ from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
-from .s3 import presigned_url
+from .s3 import generate_upload_url, presigned_url, upload_file_to_s3
 from io import BytesIO
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -39,6 +39,7 @@ from rest_framework.viewsets import ModelViewSet
 from datetime import datetime
 from bs4 import BeautifulSoup
 from rest_framework.views import APIView
+from accounts.s3 import move_s3_file
 
 
 
@@ -1937,8 +1938,7 @@ class UserFollowViewSet(ViewSet):
 
 from itertools import chain
 from operator import attrgetter
-
-
+from collections import defaultdict
 
 
 
@@ -2003,7 +2003,7 @@ class PostViewSet(viewsets.ModelViewSet):
         ).select_related("page", "created_by") \
         .prefetch_related("media")
 
-        # MERGE BOTH
+        # MERGE
         combined_posts = sorted(
             chain(user_posts, page_posts),
             key=attrgetter("created_at"),
@@ -2016,53 +2016,34 @@ class PostViewSet(viewsets.ModelViewSet):
             context={"request": request}
         )
 
-        return Response(serializer.data)
+        posts_data = serializer.data
 
+        # 🔥 BUILD USER ARTICLES MAP
+        user_articles_map = defaultdict(list)
 
-    def retrieve(self, request, *args, **kwargs):
-        """
-        Get single post with media.
-        """
-        post = self.get_object()
-        serializer = self.get_serializer(post, context={'request': request})
-        return Response(serializer.data)
-    
-    def _check_owner(self, request, post):
-        if post.user != request.user:
-            raise PermissionDenied("You do not have permission to modify this post.")
-        
-    def update(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
+        # collect user_ids only from USER POSTS (not page posts)
+        user_ids = set()
 
-        return super().update(request, *args, **kwargs)
+        for post in combined_posts:
+            if isinstance(post, Post):  # only real user posts
+                user_ids.add(post.user_id)
 
-    def destroy(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
+        # fetch all articles once
+        articles = Article.objects.filter(author_id__in=user_ids)
 
-        return super().destroy(request, *args, **kwargs)
+        for article in articles:
+            user_articles_map[str(article.author_id)].append({
+                "id": article.id,
+                "title": article.title,
+                "abstract": article.abstract,
+                "featured_image": article.featured_image.url if article.featured_image else None,
+                "cover_image": article.cover_image.url if article.cover_image else None,
+            })
 
-    def partial_update(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
-
-        title = request.data.get('title', post.title)
-        content = request.data.get('content', post.content)
-        files = request.FILES.getlist('files')
-
-        post.title = title
-        post.content = content
-        post.link_preview = get_youtube_preview(content)
-        post.save()
-
-        if files:
-            post.media.all().delete()
-            for file in files:
-                PostMedia.objects.create(post=post, file=file)
-
-        serializer = self.get_serializer(post, context={'request': request})
-        return Response(serializer.data)
+        return Response({
+            "posts": posts_data,
+            "user_articles_map": user_articles_map
+        })
 
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
@@ -2240,6 +2221,29 @@ class PostViewSet(viewsets.ModelViewSet):
 
 
 
+class FileUploadInitView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        files = request.FILES.getlist("files")  # 👈 important
+
+        if not files:
+            return Response({"error": "files required"}, status=400)
+
+        uploaded = []
+
+        for file in files:
+            key = upload_file_to_s3(file)
+            uploaded.append({
+                "key": key,
+                "url": presigned_url(key)
+            })
+
+        return Response({
+            "files": uploaded
+        }) 
+    
+
 class IsAuthorOrReadOnly(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
@@ -2274,13 +2278,45 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        article.is_published = True
-        article.published_at = timezone.now()
-        article.save()
+        article_id = article.id
 
-        return Response(
-            {"detail": "Article published successfully."}
-        )
+        try:
+            with transaction.atomic():
+
+                # FEATURED IMAGE
+                if article.featured_image and article.featured_image.startswith("articles/temp/"):
+                    filename = article.featured_image.split("/")[-1]
+                    new_key = f"articles/{article_id}/featured/{filename}"
+                    article.featured_image = move_s3_file(article.featured_image, new_key)
+
+                # COVER IMAGE
+                if article.cover_image and article.cover_image.startswith("articles/temp/"):
+                    filename = article.cover_image.split("/")[-1]
+                    new_key = f"articles/{article_id}/cover/{filename}"
+                    article.cover_image = move_s3_file(article.cover_image, new_key)
+
+                # FIGURES
+                for fig in article.figures.all():
+                    if fig.image and fig.image.startswith("articles/temp/"):
+                        filename = fig.image.split("/")[-1]
+                        new_key = f"articles/{article_id}/figures/{filename}"
+                        fig.image = move_s3_file(fig.image, new_key)
+                        fig.save(update_fields=["image"])
+
+                # FINAL SAVE
+                article.is_published = True
+                article.published_at = timezone.now()
+                article.save()
+
+        except Exception as e:
+            return Response(
+                {"error": str(e)},  # 👈 IMPORTANT
+                status=500
+            )
+
+        return Response({
+            "detail": "Article published successfully."
+        })
 
 
 class ArticleReferenceViewSet(viewsets.ModelViewSet):
@@ -2345,11 +2381,30 @@ class ArticleFigureViewSet(viewsets.ModelViewSet):
 
         instance.delete()
 
+from rest_framework.permissions import BasePermission, SAFE_METHODS
+
+
+class IsPageOwnerOrReadOnly(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+
+        return obj.owner_id == request.user.id
+
+
+
+class IsPagePostOwnerOrReadOnly(BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+        return obj.page.owner == request.user
+
+
 class PageViewSet(viewsets.ModelViewSet):
 
     
     queryset = Page.objects.all().order_by("-created_at")
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPageOwnerOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser] 
 
     def get_serializer_class(self):
@@ -2465,6 +2520,22 @@ class PageViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+    def destroy(self, request, *args, **kwargs):
+        page = self.get_object()
+
+        if page.owner != request.user:
+            return Response(
+                {"detail": "Only owner can delete this page"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        self.perform_destroy(page)
+        return Response(
+            {"detail": "Page deleted successfully"},
+            status=status.HTTP_200_OK
+        )
+
+
 class PageFollowViewSet(ViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -2543,7 +2614,7 @@ class PageFollowViewSet(ViewSet):
 class PagePostViewSet(viewsets.ModelViewSet):
 
     serializer_class = PagePostSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsPagePostOwnerOrReadOnly]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     queryset = PagePost.objects.all().order_by("-created_at")
@@ -2612,26 +2683,11 @@ class PagePostViewSet(viewsets.ModelViewSet):
         )
 
         return Response(serializer.data)
-
-    # -----------------------
-    # DELETE POST (OWNER ONLY)
-    # -----------------------
-    def destroy(self, request, *args, **kwargs):
-
-        post = self.get_object()
-
-        if post.page.owner != request.user:
-            return Response(
-                {"detail": "You cannot delete this post"},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        return super().destroy(request, *args, **kwargs)
     
 
     
     @action(detail=False, methods=["get"])
-    def my_pages(self, request):
+    def my_page_posts(self, request):
 
         pages = Page.objects.filter(owner=request.user)
 
@@ -2639,9 +2695,25 @@ class PagePostViewSet(viewsets.ModelViewSet):
             page__in=pages
         ).order_by("-created_at")
 
-        serializer = self.get_serializer(posts, many=True)
+        serializer = self.get_serializer(posts, many=True, context={"request": request})
 
         return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        post = self.get_object()
+
+        if post.page.owner != request.user:
+            return Response(
+                {"detail": "Only page owner can delete this post"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        self.perform_destroy(post)
+
+        return Response(
+            {"detail": "Post deleted successfully"},
+            status=status.HTTP_200_OK
+        )
 
 
 

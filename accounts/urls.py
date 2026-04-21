@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    ArticleFigureViewSet, api_register, api_login,api_logout, api_event_register,
+    ArticleFigureViewSet, FileUploadInitView, api_register, api_login,api_logout, api_event_register,
     upload_profile_image, get_personal_detail,
     update_personal_detail, get_professional_detail,
     update_professional_detail, add_comment, get_education_details, add_education_detail,
@@ -104,5 +104,6 @@ urlpatterns = [
     path("api/payment/gatc/webhook", razorpay_webhook),
     path("api/public/payment", public_user_event_detail),
     path("api/my-activity/overview", get_my_activity),
+    path("api/upload/", FileUploadInitView.as_view(), name="upload"),
 ]
 

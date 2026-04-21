@@ -749,17 +749,8 @@ class Article(models.Model):
 
     title = models.CharField(max_length=500)
 
-    featured_image = models.ImageField(
-        upload_to="articles/featured/",
-        null=True,
-        blank=True
-    )
-
-    cover_image = models.ImageField(
-        upload_to="articles/covers/",
-        null=True,
-        blank=True
-    )
+    featured_image = models.CharField(max_length=500, null=True, blank=True)
+    cover_image = models.CharField(max_length=500, null=True, blank=True)
 
     specialization = models.CharField(
         max_length=255,
@@ -845,7 +836,7 @@ class ArticleFigure(models.Model):
         blank=True
     )
 
-    image = models.ImageField(upload_to="articles/figures/")
+    image = models.CharField(max_length=500)
     caption = models.TextField(blank=True)
 
     figure_number = models.PositiveIntegerField(editable=False)
@@ -857,6 +848,8 @@ class ArticleFigure(models.Model):
             ).order_by("-figure_number").first()
             self.figure_number = (last.figure_number + 1) if last else 1
         super().save(*args, **kwargs)
+
+    
 
     def __str__(self):
         return f"Figure {self.figure_number}"

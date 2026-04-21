@@ -82,8 +82,8 @@ target/
 *.log
 *.pot
 *.pyc
-./eventportal/__pycache__/*
 ./accounts/__pycache__/*
+./eventportal/__pycache__/*
 local_settings.py
 
 .env
