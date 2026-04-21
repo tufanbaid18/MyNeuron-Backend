@@ -82,9 +82,11 @@ target/
 *.log
 *.pot
 *.pyc
-__pycache__/
+./eventportal/__pycache__/*
+./accounts/__pycache__/*
 local_settings.py
 
 .env
 db.sqlite3
 docker-compose.yml
+
