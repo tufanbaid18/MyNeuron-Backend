@@ -382,6 +382,8 @@ class MemberSerializer(serializers.ModelSerializer):
 
 
 class ArticleMiniSerializer(serializers.ModelSerializer):
+    featured_image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Article
         fields = (
@@ -389,8 +391,14 @@ class ArticleMiniSerializer(serializers.ModelSerializer):
             "title",
             "abstract",
             "featured_image",
-            "cover_image", 
+            "featured_image_url",
+            "specialization",
         )
+
+    def get_featured_image_url(self, obj):
+        if obj.featured_image:
+            return presigned_url(obj.featured_image)
+        return None
 
 
 # -------------------------------
@@ -448,6 +456,7 @@ class PostSerializer(serializers.ModelSerializer):
     user = UserMiniSerializer(read_only=True)
     media = PostMediaSerializer(many=True, read_only=True)
 
+    article = ArticleMiniSerializer(read_only=True)
 
     like_count = serializers.SerializerMethodField()
     bookmark_count = serializers.SerializerMethodField()
@@ -466,6 +475,7 @@ class PostSerializer(serializers.ModelSerializer):
             "user",
             "title",
             "content",
+            "article",
             "media",
             "link_preview",
             "created_at",
