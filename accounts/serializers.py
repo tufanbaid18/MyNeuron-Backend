@@ -889,19 +889,6 @@ class FollowRequestSerializer(serializers.ModelSerializer):
         read_only_fields = ["status", "responded_at"]
 
 
-
-class ArticleSectionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ArticleSection
-        fields = (
-            "id",
-            "section_type",
-            "title",
-            "content",
-            "order",
-        )
-
-
 class ArticleFigureSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
 
@@ -921,6 +908,23 @@ class ArticleFigureSerializer(serializers.ModelSerializer):
     def get_image_url(self, obj):
         return presigned_url(obj.image)
     
+
+
+class ArticleSectionSerializer(serializers.ModelSerializer):
+    figures = ArticleFigureSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ArticleSection
+        fields = (
+            "id",
+            "section_type",
+            "title",
+            "content",
+            "order",
+            "figures",
+        )
+
+
 
 
 class ArticleKeywordSerializer(serializers.ModelSerializer):
@@ -985,7 +989,6 @@ class ArticleReferenceSerializer(serializers.ModelSerializer):
 
 class ArticleSerializer(serializers.ModelSerializer):
     sections = ArticleSectionSerializer(many=True, required=False)
-    figures = ArticleFigureSerializer(many=True, read_only=True)
     references = ArticleReferenceSerializer(many=True, read_only=True)
     featured_image_url = serializers.SerializerMethodField()
     cover_image_url = serializers.SerializerMethodField()
@@ -1022,7 +1025,6 @@ class ArticleSerializer(serializers.ModelSerializer):
             "published_at",
             "author_name",
             "sections",
-            "figures",
             "references",
             "created_at",
             "updated_at",

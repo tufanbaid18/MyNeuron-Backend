@@ -2016,34 +2016,53 @@ class PostViewSet(viewsets.ModelViewSet):
             context={"request": request}
         )
 
-        posts_data = serializer.data
+        return Response(serializer.data)
 
-        # 🔥 BUILD USER ARTICLES MAP
-        user_articles_map = defaultdict(list)
 
-        # collect user_ids only from USER POSTS (not page posts)
-        user_ids = set()
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Get single post with media.
+        """
+        post = self.get_object()
+        serializer = self.get_serializer(post, context={'request': request})
+        return Response(serializer.data)
+    
+    def _check_owner(self, request, post):
+        if post.user != request.user:
+            raise PermissionDenied("You do not have permission to modify this post.")
+        
+    def update(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
 
-        for post in combined_posts:
-            if isinstance(post, Post):  # only real user posts
-                user_ids.add(post.user_id)
+        return super().update(request, *args, **kwargs)
 
-        # fetch all articles once
-        articles = Article.objects.filter(author_id__in=user_ids)
+    def destroy(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
 
-        for article in articles:
-            user_articles_map[str(article.author_id)].append({
-                "id": article.id,
-                "title": article.title,
-                "abstract": article.abstract,
-                "featured_image": article.featured_image.url if article.featured_image else None,
-                "cover_image": article.cover_image.url if article.cover_image else None,
-            })
+        return super().destroy(request, *args, **kwargs)
 
-        return Response({
-            "posts": posts_data,
-            "user_articles_map": user_articles_map
-        })
+    def partial_update(self, request, *args, **kwargs):
+        post = self.get_object()
+        self._check_owner(request, post)
+
+        title = request.data.get('title', post.title)
+        content = request.data.get('content', post.content)
+        files = request.FILES.getlist('files')
+
+        post.title = title
+        post.content = content
+        post.link_preview = get_youtube_preview(content)
+        post.save()
+
+        if files:
+            post.media.all().delete()
+            for file in files:
+                PostMedia.objects.create(post=post, file=file)
+
+        serializer = self.get_serializer(post, context={'request': request})
+        return Response(serializer.data)
 
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
