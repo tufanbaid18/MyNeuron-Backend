@@ -2046,10 +2046,12 @@ class PostViewSet(viewsets.ModelViewSet):
             status="accepted"
         ).values_list("following_id", flat=True)
 
-        # Pages I follow
+        # Pages I follow + pages I own
         following_pages = PageFollow.objects.filter(
             user=user
         ).values_list("page_id", flat=True)
+
+        own_pages = Page.objects.filter(owner=user).values_list("id", flat=True)
 
         # USER POSTS
         user_posts = Post.objects.filter(
@@ -2057,9 +2059,9 @@ class PostViewSet(viewsets.ModelViewSet):
         ).select_related("user") \
         .prefetch_related("media", "likes", "comments")
 
-        # PAGE POSTS
+        # PAGE POSTS (followed pages + own pages)
         page_posts = PagePost.objects.filter(
-            page_id__in=following_pages
+            Q(page_id__in=following_pages) | Q(page_id__in=own_pages)
         ).select_related("page", "created_by") \
         .prefetch_related("media")
 
@@ -2127,28 +2129,31 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def like(self, request, pk=None):
-        post = self.get_object()
+        post_type = request.data.get("post_type", "post")
+        if post_type == "user_post":
+            post_type = "post"
 
-        like, created = Like.objects.get_or_create(
-            user=request.user,
-            post=post
-        )
+        if post_type == "page_post":
+            post = get_object_or_404(PagePost, id=pk)
+            like, created = PagePostLike.objects.get_or_create(user=request.user, post=post)
+            owner = post.created_by
+        else:
+            post = self.get_object()
+            like, created = Like.objects.get_or_create(user=request.user, post=post)
+            owner = post.user
 
         if created:
             is_liked = True
-
-            # 🔔 Notify post owner
-            if post.user != request.user:
+            if owner != request.user:
                 notification = Notification.objects.create(
-                    user=post.user,
+                    user=owner,
                     actor=request.user,
                     action="liked your post",
-                    post=post,
+                    post=post if post_type == "post" else None,
                 )
-
                 from accounts.firebase_utils import push_notification_to_firebase
                 push_notification_to_firebase(
-                    user_id=post.user.id,
+                    user_id=owner.id,
                     data={
                         "action": "liked your post",
                         "actor": request.user.id,
@@ -2171,32 +2176,37 @@ class PostViewSet(viewsets.ModelViewSet):
         )
 
 
-    # Add comment
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def comment(self, request, pk=None):
-        post = self.get_object()
+        post_type = request.data.get("post_type", "post")
+        if post_type == "user_post":
+            post_type = "post"
         c_content = request.data.get('c_content')
 
         if not c_content:
             return Response({'error': 'Comment cannot be empty'}, status=400)
 
-        comment = Comment.objects.create(
-            user=request.user,
-            post=post,
-            c_content=c_content
-        )
+        if post_type == "page_post":
+            post = get_object_or_404(PagePost, id=pk)
+            comment = PagePostComment.objects.create(user=request.user, post=post, c_content=c_content)
+            owner = post.created_by
+            serializer = PagePostCommentSerializer(comment, context={"request": request})
+        else:
+            post = self.get_object()
+            comment = Comment.objects.create(user=request.user, post=post, c_content=c_content)
+            owner = post.user
+            serializer = CommentSerializer(comment, context={"request": request})
 
-        if post.user != request.user:
+        if owner != request.user:
             notification = Notification.objects.create(
-                user=post.user,
+                user=owner,
                 actor=request.user,
                 action="commented on your post",
-                post=post,
+                post=post if post_type == "post" else None,
             )
-
             from accounts.firebase_utils import push_notification_to_firebase
             push_notification_to_firebase(
-                user_id=post.user.id,
+                user_id=owner.id,
                 data={
                     "action": "commented on your post",
                     "actor": request.user.id,
@@ -2206,7 +2216,6 @@ class PostViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        serializer = CommentSerializer(comment, context={"request": request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -2221,12 +2230,16 @@ class PostViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def bookmark(self, request, pk=None):
-        post = self.get_object()
+        post_type = request.data.get("post_type", "post")
+        if post_type == "user_post":
+            post_type = "post"
 
-        bookmark, created = Bookmark.objects.get_or_create(
-            user=request.user,
-            post=post
-        )
+        if post_type == "page_post":
+            post = get_object_or_404(PagePost, id=pk)
+            bookmark, created = PagePostBookmark.objects.get_or_create(user=request.user, post=post)
+        else:
+            post = self.get_object()
+            bookmark, created = Bookmark.objects.get_or_create(user=request.user, post=post)
 
         if created:
             is_bookmarked = True
@@ -2247,40 +2260,39 @@ class PostViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
     def share(self, request, pk=None):
-        post = self.get_object()
+        post_type = request.data.get("post_type", "post")
+        if post_type == "user_post":
+            post_type = "post"
         receiver_id = request.data.get("receiver")
 
         if not receiver_id:
-            return Response(
-                {"error": "Receiver is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Receiver is required"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             receiver = User.objects.get(id=receiver_id)
         except User.DoesNotExist:
-            return Response(
-                {"error": "Receiver not found"},
-                status=status.HTTP_404_NOT_FOUND
+            return Response({"error": "Receiver not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if post_type == "page_post":
+            post = get_object_or_404(PagePost, id=pk)
+            message = Message.objects.create(
+                sender=request.user, receiver=receiver,
+                page_post=post, content="Shared a page post"
+            )
+        else:
+            post = self.get_object()
+            message = Message.objects.create(
+                sender=request.user, receiver=receiver,
+                post=post, content="Shared a post"
             )
 
-        # ✅ Use existing Message model
-        message = Message.objects.create(
-            sender=request.user,
-            receiver=receiver,
-            post=post,
-            content="Shared a post"
-        )
-
-        # Notification
         if receiver != request.user:
             notification = Notification.objects.create(
                 user=receiver,
                 actor=request.user,
                 action="shared a post with you",
-                post=post
+                post=post if post_type == "post" else None,
             )
-
             from accounts.firebase_utils import push_notification_to_firebase
             push_notification_to_firebase(
                 user_id=receiver.id,
@@ -2294,7 +2306,7 @@ class PostViewSet(viewsets.ModelViewSet):
             )
 
         return Response(
-            {"message": "Post shared successfully"},
+            {"message": "Post shared successfully", "message_id": message.id},
             status=status.HTTP_201_CREATED
         )
 
@@ -2802,170 +2814,6 @@ class PagePostViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
-    # -----------------------
-    # LIKE / UNLIKE PAGE POST
-    # -----------------------
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def like(self, request, pk=None):
-        post = self.get_object()
-
-        like, created = PagePostLike.objects.get_or_create(
-            user=request.user,
-            post=post
-        )
-
-        if created:
-            is_liked = True
-
-            if post.created_by != request.user:
-                notification = Notification.objects.create(
-                    user=post.created_by,
-                    actor=request.user,
-                    action="liked your post",
-                )
-
-                from accounts.firebase_utils import push_notification_to_firebase
-                push_notification_to_firebase(
-                    user_id=post.created_by.id,
-                    data={
-                        "action": "liked your post",
-                        "actor": request.user.id,
-                        "post": post.id,
-                        "created_at": str(notification.created_at),
-                        "is_read": False,
-                    }
-                )
-        else:
-            like.delete()
-            is_liked = False
-
-        return Response(
-            {
-                "id": post.id,
-                "is_liked": is_liked,
-                "like_count": post.likes.count(),
-            },
-            status=status.HTTP_200_OK
-        )
-
-    # -----------------------
-    # COMMENT ON PAGE POST
-    # -----------------------
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def comment(self, request, pk=None):
-        post = self.get_object()
-        c_content = request.data.get("c_content")
-
-        if not c_content:
-            return Response({"error": "Comment cannot be empty"}, status=status.HTTP_400_BAD_REQUEST)
-
-        comment = PagePostComment.objects.create(
-            user=request.user,
-            post=post,
-            c_content=c_content
-        )
-
-        if post.created_by != request.user:
-            notification = Notification.objects.create(
-                user=post.created_by,
-                actor=request.user,
-                action="commented on your post",
-            )
-
-            from accounts.firebase_utils import push_notification_to_firebase
-            push_notification_to_firebase(
-                user_id=post.created_by.id,
-                data={
-                    "action": "commented on your post",
-                    "actor": request.user.id,
-                    "post": post.id,
-                    "created_at": str(notification.created_at),
-                    "is_read": False,
-                }
-            )
-
-        serializer = PagePostCommentSerializer(comment, context={"request": request})
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    # -----------------------
-    # BOOKMARK / UNBOOKMARK PAGE POST
-    # -----------------------
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def bookmark(self, request, pk=None):
-        post = self.get_object()
-
-        bookmark, created = PagePostBookmark.objects.get_or_create(
-            user=request.user,
-            post=post
-        )
-
-        if created:
-            is_bookmarked = True
-        else:
-            bookmark.delete()
-            is_bookmarked = False
-
-        return Response(
-            {
-                "id": post.id,
-                "is_bookmarked": is_bookmarked,
-                "bookmark_count": post.bookmarks.count(),
-            },
-            status=status.HTTP_200_OK
-        )
-
-    # -----------------------
-    # SHARE PAGE POST (via Message)
-    # -----------------------
-    @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
-    def share(self, request, pk=None):
-        post = self.get_object()
-        receiver_id = request.data.get("receiver")
-
-        if not receiver_id:
-            return Response(
-                {"error": "Receiver is required"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            receiver = User.objects.get(id=receiver_id)
-        except User.DoesNotExist:
-            return Response(
-                {"error": "Receiver not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        message = Message.objects.create(
-            sender=request.user,
-            receiver=receiver,
-            page_post=post,
-            content="Shared a page post"
-        )
-
-        if receiver != request.user:
-            notification = Notification.objects.create(
-                user=receiver,
-                actor=request.user,
-                action="shared a post with you",
-            )
-
-            from accounts.firebase_utils import push_notification_to_firebase
-            push_notification_to_firebase(
-                user_id=receiver.id,
-                data={
-                    "action": "shared a post with you",
-                    "actor": request.user.id,
-                    "post": post.id,
-                    "created_at": str(notification.created_at),
-                    "is_read": False,
-                }
-            )
-
-        return Response(
-            {"message": "Post shared successfully", "message_id": message.id},
-            status=status.HTTP_201_CREATED
-        )
 
 
 
