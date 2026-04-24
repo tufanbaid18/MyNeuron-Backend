@@ -1979,7 +1979,67 @@ class PostViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
 
         user = request.user
-
+        
+        # Get optional filter parameters
+        user_id = request.query_params.get('userId')
+        page_id = request.query_params.get('pageId')
+        
+        # Validate that both userId and pageId are not provided at the same time
+        if user_id and page_id:
+            return Response(
+                {"error": "Cannot use both userId and pageId filters at the same time"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Filter by specific user if userId is provided
+        if user_id:
+            try:
+                target_user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response(
+                    {"error": f"User with id {user_id} not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Get posts from the specified user
+            user_posts = Post.objects.filter(
+                user=target_user
+            ).select_related("user") \
+            .prefetch_related("media", "likes", "comments") \
+            .order_by('-created_at')
+            
+            serializer = FeedSerializer(
+                user_posts,
+                many=True,
+                context={"request": request}
+            )
+            return Response(serializer.data)
+        
+        # Filter by specific page if pageId is provided
+        if page_id:
+            try:
+                target_page = Page.objects.get(id=page_id)
+            except Page.DoesNotExist:
+                return Response(
+                    {"error": f"Page with id {page_id} not found"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            # Get posts from the specified page
+            page_posts = PagePost.objects.filter(
+                page=target_page
+            ).select_related("page", "created_by") \
+            .prefetch_related("media") \
+            .order_by('-created_at')
+            
+            serializer = FeedSerializer(
+                page_posts,
+                many=True,
+                context={"request": request}
+            )
+            return Response(serializer.data)
+        
+        # Default behavior: show feed from user's own posts and followed users/pages
         # Users I follow
         following_ids = FollowRequest.objects.filter(
             follower=user,
