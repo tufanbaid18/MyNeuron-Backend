@@ -855,9 +855,16 @@ class Message(models.Model):
         on_delete=models.CASCADE
     )
 
-    # 🔥 NEW (optional)
     post = models.ForeignKey(
         Post,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="shared_messages"
+    )
+
+    page_post = models.ForeignKey(
+        "PagePost",
         null=True,
         blank=True,
         on_delete=models.CASCADE,
@@ -1105,6 +1112,34 @@ class PagePostMedia(models.Model):
 
         super().save(*args, **kwargs)
 
+
+
+class PagePostLike(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    post = models.ForeignKey(PagePost, on_delete=models.CASCADE, related_name="likes")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "post")
+
+
+class PagePostBookmark(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    post = models.ForeignKey(PagePost, on_delete=models.CASCADE, related_name="bookmarks")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "post")
+
+
+class PagePostComment(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    post = models.ForeignKey(PagePost, on_delete=models.CASCADE, related_name="comments")
+    c_content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Comment by {self.user.email} on {self.post}"
 
 
 class Registration(models.Model):

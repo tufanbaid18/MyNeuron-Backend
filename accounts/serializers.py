@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    User, Page, PagePost, PageFollow, PagePostMedia, Event, Member, PersonalDetail, ProfessionalDetail, Post, PostMedia, Education,
-    CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program, 
+    User, Page, PagePost, PageFollow, PagePostMedia, PagePostLike, PagePostBookmark, PagePostComment, Event, Member, PersonalDetail, ProfessionalDetail, Post, PostMedia, Education,
+    CalendarEvent, ScientificInterest, PastExperience, FollowRequest, Folder, FolderItem, Message, Notification, Comment, Program,
     Article, ArticleSection, ArticleFigure, ArticleKeyword, ArticleKeywordMap, ArticleReference, ArticleRating, Registration, PaymentAttempt, ManualPayment, EventCategoryPricing
 )
 from .validators import validate_email, validate_password_complexity
@@ -1385,13 +1385,25 @@ class PagePostMediaSerializer(serializers.ModelSerializer):
         return None
     
 
+class PagePostCommentSerializer(serializers.ModelSerializer):
+    user = UserMiniSerializer(read_only=True)
+
+    class Meta:
+        model = PagePostComment
+        fields = ["id", "user", "c_content", "created_at"]
+
+
 class PagePostSerializer(serializers.ModelSerializer):
 
     page_details = serializers.SerializerMethodField()
-
     media = PagePostMediaSerializer(many=True, read_only=True)
-
     created_by = UserMiniSerializer(read_only=True)
+    like_count = serializers.SerializerMethodField()
+    bookmark_count = serializers.SerializerMethodField()
+    comment_count = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
+    is_bookmarked = serializers.SerializerMethodField()
+    comments = PagePostCommentSerializer(many=True, read_only=True)
 
     class Meta:
         model = PagePost
@@ -1401,6 +1413,12 @@ class PagePostSerializer(serializers.ModelSerializer):
             "created_by",
             "content",
             "media",
+            "like_count",
+            "bookmark_count",
+            "comment_count",
+            "is_liked",
+            "is_bookmarked",
+            "comments",
             "created_at",
         ]
 
@@ -1412,6 +1430,27 @@ class PagePostSerializer(serializers.ModelSerializer):
             "category": page.category,
             "profile_image": presigned_url(page.profile_image.name) if page.profile_image else None,
         }
+
+    def get_like_count(self, obj):
+        return obj.likes.count()
+
+    def get_bookmark_count(self, obj):
+        return obj.bookmarks.count()
+
+    def get_comment_count(self, obj):
+        return obj.comments.count()
+
+    def get_is_liked(self, obj):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.likes.filter(user=request.user).exists()
+        return False
+
+    def get_is_bookmarked(self, obj):
+        request = self.context.get("request")
+        if request and request.user.is_authenticated:
+            return obj.bookmarks.filter(user=request.user).exists()
+        return False
 
 
 
