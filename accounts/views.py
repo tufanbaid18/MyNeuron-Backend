@@ -2082,49 +2082,76 @@ class PostViewSet(viewsets.ModelViewSet):
 
 
     def retrieve(self, request, *args, **kwargs):
-        """
-        Get single post with media.
-        """
-        post = self.get_object()
-        serializer = self.get_serializer(post, context={'request': request})
+        post_type = request.query_params.get("post_type", "post")
+        if post_type == "user_post":
+            post_type = "post"
+
+        if post_type == "page_post":
+            post = get_object_or_404(PagePost, id=kwargs["pk"])
+            serializer = PagePostSerializer(post, context={"request": request})
+        else:
+            post = self.get_object()
+            serializer = self.get_serializer(post, context={"request": request})
+
         return Response(serializer.data)
     
     def _check_owner(self, request, post):
         if post.user != request.user:
             raise PermissionDenied("You do not have permission to modify this post.")
-        
-    def update(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
-
-        return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
+        post_type = request.query_params.get("post_type", "post")
+        if post_type in ("user_post", "post"):
+            post = self.get_object()
+            self._check_owner(request, post)
+            post.delete()
+        else:
+            post = get_object_or_404(PagePost, id=kwargs["pk"])
+            if post.page.owner != request.user:
+                raise PermissionDenied("Only the page owner can delete this post.")
+            post.delete()
 
-        return super().destroy(request, *args, **kwargs)
+        return Response({"detail": "Post deleted successfully"}, status=status.HTTP_200_OK)
 
     def partial_update(self, request, *args, **kwargs):
-        post = self.get_object()
-        self._check_owner(request, post)
+        post_type = request.data.get("post_type", "post")
+        if post_type == "user_post":
+            post_type = "post"
 
-        title = request.data.get('title', post.title)
-        content = request.data.get('content', post.content)
-        files = request.FILES.getlist('files')
+        if post_type == "page_post":
+            post = get_object_or_404(PagePost, id=kwargs["pk"])
+            if post.page.owner != request.user:
+                raise PermissionDenied("Only the page owner can edit this post.")
+            content = request.data.get("content", post.content)
+            files = request.FILES.getlist("files")
+            post.content = content
+            post.save()
+            if files:
+                post.media.all().delete()
+                for file in files:
+                    PagePostMedia.objects.create(post=post, file=file)
+            serializer = PagePostSerializer(post, context={"request": request})
+        else:
+            post = self.get_object()
+            self._check_owner(request, post)
+            title = request.data.get('title', post.title)
+            content = request.data.get('content', post.content)
+            files = request.FILES.getlist('files')
+            post.title = title
+            post.content = content
+            post.link_preview = get_youtube_preview(content)
+            post.save()
+            if files:
+                post.media.all().delete()
+                for file in files:
+                    PostMedia.objects.create(post=post, file=file)
+            serializer = self.get_serializer(post, context={'request': request})
 
-        post.title = title
-        post.content = content
-        post.link_preview = get_youtube_preview(content)
-        post.save()
-
-        if files:
-            post.media.all().delete()
-            for file in files:
-                PostMedia.objects.create(post=post, file=file)
-
-        serializer = self.get_serializer(post, context={'request': request})
         return Response(serializer.data)
+
+    def update(self, request, *args, **kwargs):
+        kwargs["partial"] = False
+        return self.partial_update(request, *args, **kwargs)
 
 
     @action(detail=True, methods=["post"], permission_classes=[IsAuthenticated])
