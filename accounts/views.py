@@ -2387,14 +2387,22 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 article.published_at = timezone.now()
                 article.save()
 
+                
+                Post.objects.create(
+                    user=article.author,
+                    article=article,
+                    title="",        
+                    content=""       
+                )
+
         except Exception as e:
             return Response(
-                {"error": str(e)},  # 👈 IMPORTANT
+                {"error": str(e)}, 
                 status=500
             )
 
         return Response({
-            "detail": "Article published successfully."
+        "detail": "Article published and shared as post."
         })
 
 
