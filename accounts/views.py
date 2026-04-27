@@ -1020,13 +1020,18 @@ def search_public_users(request):
     if not query:
         return Response([])
 
-    users = User.objects.filter(
-        Q(first_name__icontains=query) |
-        Q(last_name__icontains=query)
-    ).select_related(
+    parts = query.split()
+    name_q = Q()
+    for part in parts:
+        name_q &= (Q(first_name__icontains=part) | Q(last_name__icontains=part))
+
+    # Also match when the full query spans first+last name (e.g. "John Doe")
+    full_name_q = Q(first_name__icontains=query) | Q(last_name__icontains=query)
+
+    users = User.objects.filter(name_q | full_name_q).select_related(
         "personal_detail",
         "professional_detail"
-    )[:10]  # limit results
+    ).distinct()[:10]  # limit results
 
     serializer = PublicUserProfileSerializer(
         users, many=True, context={"request": request}
